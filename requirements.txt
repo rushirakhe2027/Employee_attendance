@@ -1,0 +1,16 @@
+pyserial==3.5
+RPLCD==1.3.1
+smbus2==0.4.3
+RPi.GPIO==0.7.1
+picamera2==0.3.12
+flask
+flask-socketio
+python-socketio[client]
+opencv-python
+numpy
+pandas
+face_recognition
+dlib
+requests
+
+ 

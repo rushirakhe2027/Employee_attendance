@@ -1,0 +1,16 @@
+__pycache__/
+.venv/
+.agent/
+.gemini/
+*.pyc
+*.pyo
+*.pyd
+.db
+db.sqlite3
+database/faces/*.jpg
+database/faces/*.png
+database/faces/*.jpeg
+database/encodings/*.npy
+# Keep the directory structure but ignore contents
+!database/faces/.gitkeep
+!database/encodings/.gitkeep

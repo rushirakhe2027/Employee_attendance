@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<header>
+    <h1>Attendance Records</h1>
+    <a href="{{ url_for('download') }}" class="btn">Download CSV</a>
+</header>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in attendance %}
+            <tr>
+                <td>{{ record.Employee_ID }}</td>
+                <td>{{ record.Name }}</td>
+                <td>{{ record.Date }}</td>
+                <td>{{ record.Time }}</td>
+                <td>
+                    <span class="status-pill status-{{ record.Status.lower() }}">{{ record.Status }}</span>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" style="text-align: center; color: #94a3b8; padding: 2rem;">No attendance records found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

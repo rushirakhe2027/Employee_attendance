@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<header>
+    <div>
+        <a href="{{ url_for('employees') }}" style="color: var(--primary); text-decoration: none; font-weight: 600; font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            ← Back to Directory
+        </a>
+        <h1>{{ employee.Name }}'s History</h1>
+        <div style="color: var(--text-muted); font-weight: 500;">Employee ID: {{ employee.Employee_ID }} | Department: {{ employee.Department }}</div>
+    </div>
+</header>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+    <div class="card" style="border-bottom: 4px solid var(--primary);">
+        <div style="color: var(--text-muted); font-size: 0.8125rem; font-weight: 600; text-transform: uppercase;">Total Appearances</div>
+        <div style="font-size: 2rem; font-weight: 700; margin-top: 0.5rem;">{{ stats.total_present }}</div>
+    </div>
+    <div class="card" style="border-bottom: 4px solid var(--success);">
+        <div style="color: var(--text-muted); font-size: 0.8125rem; font-weight: 600; text-transform: uppercase;">On-Time Arrivals</div>
+        <div style="font-size: 2rem; font-weight: 700; color: var(--success); margin-top: 0.5rem;">{{ stats.on_time_count }}</div>
+    </div>
+    <div class="card" style="border-bottom: 4px solid var(--danger);">
+        <div style="color: var(--text-muted); font-size: 0.8125rem; font-weight: 600; text-transform: uppercase;">Late Arrivals</div>
+        <div style="font-size: 2rem; font-weight: 700; color: var(--danger); margin-top: 0.5rem;">{{ stats.late_count }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <div style="margin-bottom: 1.5rem;">
+        <h2 style="font-size: 1.25rem;">Detailed Attendance Log</h2>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in history %}
+            <tr>
+                <td>{{ record.Date }}</td>
+                <td>{{ record.Time }}</td>
+                <td>
+                    <span class="status-pill status-{{ record.Status.lower() }}">{{ record.Status }}</span>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="3" style="text-align: center; color: var(--text-muted); padding: 2rem;">No attendance history found for this employee.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
