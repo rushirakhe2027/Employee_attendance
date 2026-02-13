@@ -1,16 +1,18 @@
 __pycache__/
+*.py[cod]
+*$py.class
 .venv/
+venv/
+ENV/
+.env
 .agent/
-.gemini/
-*.pyc
-*.pyo
-*.pyd
-.db
-db.sqlite3
 database/faces/*.jpg
-database/faces/*.png
 database/faces/*.jpeg
+database/faces/*.png
 database/encodings/*.npy
-# Keep the directory structure but ignore contents
 !database/faces/.gitkeep
 !database/encodings/.gitkeep
+database/attendance.csv
+database/employees.csv
+.DS_Store
+Thumbs.db
