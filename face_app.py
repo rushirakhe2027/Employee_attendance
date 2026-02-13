@@ -6,6 +6,7 @@ import os
 import signal
 import sys
 import socketio
+import pytz
 
 from modules.face_recognition_module import FaceRecognitionModule
 from modules.lcd_module import LCDModule
@@ -14,6 +15,7 @@ from modules.buzzer_module import BuzzerModule
 # Configuration
 OFFICE_START_TIME = "09:30"
 OFFICE_END_TIME = "17:30"
+IST = pytz.timezone('Asia/Kolkata')
 DATABASE_DIR = "database"
 ATTENDANCE_FILE = f"{DATABASE_DIR}/attendance.csv"
 EMPLOYEES_FILE = f"{DATABASE_DIR}/employees.csv"
@@ -44,7 +46,7 @@ class EmployeeAttendanceApp:
             print(f"Server connection failed (real-time updates disabled): {e}")
 
     def mark_attendance(self, name):
-        now = datetime.now()
+        now = datetime.now(IST)
         current_date = now.strftime("%Y-%m-%d")
         current_time = now.strftime("%H:%M:%S")
         

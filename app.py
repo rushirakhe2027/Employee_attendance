@@ -7,11 +7,14 @@ import requests
 import json
 from datetime import datetime
 import time
+import pytz
 from modules.face_recognition_module import FaceRecognitionModule
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+IST = pytz.timezone('Asia/Kolkata')
 
 DATABASE_DIR = "database"
 EMPLOYEES_FILE = f"{DATABASE_DIR}/employees.csv"
@@ -23,9 +26,11 @@ WEBHOOK_URL = os.environ.get("ATTENDANCE_WEBHOOK_URL") # Optional environment va
 video_frame = None
 face_reg_module = FaceRecognitionModule() # Initialize for registration
 
+IST = pytz.timezone('Asia/Kolkata')
+
 @app.context_processor
 def inject_now():
-    return {'datetime': datetime}
+    return {'datetime': datetime, 'now': datetime.now(IST)}
 
 def ensure_db():
     if not os.path.exists(DATABASE_DIR):
@@ -51,7 +56,7 @@ def index():
     df_att = pd.read_csv(ATTENDANCE_FILE)
     df_emp = pd.read_csv(EMPLOYEES_FILE)
     
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(IST).strftime("%Y-%m-%d")
     df_today = df_att[df_att['Date'] == today]
     
     stats = {
@@ -92,7 +97,7 @@ def employees():
                 return redirect(url_for('employees'))
         
         df = pd.read_csv(EMPLOYEES_FILE)
-        new_emp = pd.DataFrame([[emp_id, name, phone, dept, datetime.now().strftime("%Y-%m-%d")]], 
+        new_emp = pd.DataFrame([[emp_id, name, phone, dept, datetime.now(IST).strftime("%Y-%m-%d")]], 
                                columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date'])
         
         df = pd.concat([df, new_emp], ignore_index=True)

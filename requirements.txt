@@ -12,5 +12,6 @@ pandas
 face_recognition
 dlib
 requests
+pytz
 
  
