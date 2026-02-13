@@ -13,6 +13,7 @@ from modules.buzzer_module import BuzzerModule
 
 # Configuration
 OFFICE_START_TIME = "09:30"
+OFFICE_END_TIME = "17:30"
 DATABASE_DIR = "database"
 ATTENDANCE_FILE = f"{DATABASE_DIR}/attendance.csv"
 EMPLOYEES_FILE = f"{DATABASE_DIR}/employees.csv"
@@ -31,7 +32,7 @@ class EmployeeAttendanceApp:
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
         self.running = True
-        self.last_seen = {} 
+        self.last_record = {} # name -> (last_type, last_date)
         
         self.connect_to_server()
 
@@ -47,16 +48,26 @@ class EmployeeAttendanceApp:
         current_date = now.strftime("%Y-%m-%d")
         current_time = now.strftime("%H:%M:%S")
         
-        # Avoid duplicate marking within same day (simple logic)
-        if name in self.last_seen:
-            _, last_date = self.last_seen[name]
-            if last_date == current_date:
-                return False
-        
-        # Determine Status
         start_time = datetime.strptime(OFFICE_START_TIME, "%H:%M").time()
-        is_late = now.time() > start_time
-        status = "Late" if is_late else "Present"
+        end_time = datetime.strptime(OFFICE_END_TIME, "%H:%M").time()
+        
+        # Simple Logic: 
+        # Before 1:00 PM is CHECK-IN
+        # After 1:00 PM is CHECK-OUT
+        record_type = "IN" if now.hour < 13 else "OUT"
+        
+        # Prevent spam (only allow one IN and one OUT per day)
+        if name in self.last_record:
+            l_type, l_date = self.last_record[name]
+            if l_date == current_date and l_type == record_type:
+                return False
+
+        if record_type == "IN":
+            is_late = now.time() > start_time
+            status = "Late Arrival" if is_late else "On-Time"
+        else:
+            is_early = now.time() < end_time
+            status = "Early Leaving" if is_early else "Left"
         
         # Get Employee ID
         try:
@@ -80,16 +91,19 @@ class EmployeeAttendanceApp:
             })
 
         # Feedback
-        print(f"Attendance Marked: {name} ({status}) at {current_time}")
-        self.lcd.display(f"Welcome {name}", f"Status: {status}")
+        print(f"[{record_type}] Marked: {name} as {status} at {current_time}")
+        self.lcd.display(f"{name}: {record_type}", f"{status}")
         
-        if is_late:
+        if status == "Late Arrival":
             self.buzzer.beep_late()
+        elif status == "Early Leaving":
+            self.buzzer.beep_late() # Same double beep for early leaving warning
         else:
             self.buzzer.beep_present()
             
-        self.last_seen[name] = (now, current_date)
+        self.last_record[name] = (record_type, current_date)
         return True
+
 
     def run(self):
         print("Starting Employee Attendance System...")

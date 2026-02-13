@@ -51,12 +51,17 @@ def index():
     df_att = pd.read_csv(ATTENDANCE_FILE)
     df_emp = pd.read_csv(EMPLOYEES_FILE)
     
+    today = datetime.now().strftime("%Y-%m-%d")
+    df_today = df_att[df_att['Date'] == today]
+    
     stats = {
         'total_employees': len(df_emp),
         'total_attendance': len(df_att),
-        'late_today': len(df_att[(df_att['Date'] == datetime.now().strftime("%Y-%m-%d")) & (df_att['Status'] == 'Late')]),
-        'present_today': len(df_att[df_att['Date'] == datetime.now().strftime("%Y-%m-%d")])
+        'late_today': len(df_today[df_today['Status'] == 'Late Arrival']),
+        'early_leaving_today': len(df_today[df_today['Status'] == 'Early Leaving']),
+        'present_today': len(df_today[df_today['Status'].isin(['On-Time', 'Late Arrival'])])
     }
+
     
     latest_attendance = df_att.tail(10).iloc[::-1].to_dict('records')
     return render_template('index.html', stats=stats, attendance=latest_attendance)
