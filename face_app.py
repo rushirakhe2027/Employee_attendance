@@ -133,14 +133,66 @@ class EmployeeAttendanceApp:
                 
                 for name in names:
                     if name == "Unknown":
-                        self.lcd.display("Unknown Face", "Access Denied")
                         self.buzzer.beep_unknown()
-                        time.sleep(1)
+                        self.lcd.display("Unknown! 1:Rescan", "2:Register")
+                        print("\n" + "="*40)
+                        print(" [!] UNKNOWN FACE DETECTED")
+                        print("="*40)
+                        print(" 1. Rescan (Try again)")
+                        print(" 2. Register New Employee (Directly here)")
+                        print("="*40)
+                        
+                        choice = input("Enter Choice (1/2): ").strip()
+                        
+                        if choice == '2':
+                            self.lcd.display("Enter Name", "in Terminal...")
+                            new_name = input("Enter Full Name: ").strip()
+                            
+                            self.lcd.display("Enter Emp ID", "in Terminal...")
+                            new_id = input("Enter Employee ID: ").strip()
+                            
+                            self.lcd.display("Enter Dept", "in Terminal...")
+                            new_dept = input("Enter Department: ").strip()
+                            
+                            self.lcd.display("Enter Phone", "in Terminal...")
+                            new_phone = input("Enter Phone Number: ").strip()
+                            
+                            if new_name and new_id:
+                                # Save current frame as photo
+                                temp_photo = os.path.join(DATABASE_DIR, f"temp_reg.jpg")
+                                cv2.imwrite(temp_photo, frame) # frame is BGR
+                                
+                                self.lcd.display("Processing...", "Please wait")
+                                success, msg = self.face_module.register_new_face(new_name, temp_photo)
+                                
+                                if success:
+                                    # Update CSV
+                                    df = pd.read_csv(EMPLOYEES_FILE)
+                                    new_emp = pd.DataFrame([[new_id, new_name, new_phone, new_dept, datetime.now(IST).strftime("%Y-%m-%d")]], 
+                                                           columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date'])
+                                    df = pd.concat([df, new_emp], ignore_index=True)
+                                    df.to_csv(EMPLOYEES_FILE, index=False)
+                                    
+                                    self.lcd.display("Reg Success!", new_name)
+                                    print(f"Successfully registered {new_name}")
+                                    time.sleep(2)
+                                else:
+                                    self.lcd.display("Reg Failed", "Try again")
+                                    print(f"Error during registration: {msg}")
+                                    time.sleep(2)
+                                
+                                if os.path.exists(temp_photo):
+                                    os.remove(temp_photo)
+                            else:
+                                print("Registration cancelled (Missing details).")
+                        
                         self.lcd.display("System Ready", "Scan Face")
+                        
                     else:
                         if self.mark_attendance(name):
                             time.sleep(2)
                             self.lcd.display("System Ready", "Scan Face")
+
                 
                 time.sleep(0.1)
                 
