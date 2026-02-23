@@ -19,6 +19,7 @@ IST = pytz.timezone('Asia/Kolkata')
 DATABASE_DIR = "database"
 ATTENDANCE_FILE = f"{DATABASE_DIR}/attendance.csv"
 EMPLOYEES_FILE = f"{DATABASE_DIR}/employees.csv"
+LIVE_FRAME_PATH = f"{DATABASE_DIR}/live_frame.jpg"  # Shared with app.py
 
 # SocketIO Client to talk to the Flask server
 sio = socketio.Client()
@@ -107,6 +108,16 @@ class EmployeeAttendanceApp:
         return True
 
 
+    def write_frame_to_disk(self, frame):
+        """Write the current camera frame to a shared file for the web dashboard."""
+        try:
+            ret, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
+            if ret:
+                with open(LIVE_FRAME_PATH, 'wb') as f:
+                    f.write(buf.tobytes())
+        except Exception:
+            pass
+
     def run(self):
         print("Starting Employee Attendance System...")
         self.lcd.display("System Ready", "Scan Face")
@@ -119,7 +130,10 @@ class EmployeeAttendanceApp:
                 
                 # Mirror frame
                 frame = cv2.flip(frame, 1)
-                
+
+                # Write frame to shared file for web dashboard live feed
+                self.write_frame_to_disk(frame)
+
                 # Update global frame in server if they are in same memory space 
                 # (Since they are separate processes, we'll use a trick or just simple camera sharing if on same machine)
                 # For this demonstration, we'll assume they might run together or we stream via socket

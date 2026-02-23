@@ -154,17 +154,30 @@ def attendance():
 def download():
     return send_file(ATTENDANCE_FILE, as_attachment=True)
 
-# --- Real-time Video Stream ---
+# --- Shared-file based Live Video Stream ---
+# face_app.py writes frames to this temp file; app.py reads and serves them
+LIVE_FRAME_PATH = os.path.join(DATABASE_DIR, "live_frame.jpg")
+
 def generate_frames():
-    global video_frame
+    """Read frames written by face_app.py and stream as MJPEG."""
+    # Create a simple offline placeholder image
+    offline_img = cv2.imread("static/offline.jpg") if os.path.exists("static/offline.jpg") else None
+    
     while True:
-        if video_frame is not None:
-            ret, buffer = cv2.imencode('.jpg', video_frame)
-            frame_bytes = buffer.tobytes()
+        if os.path.exists(LIVE_FRAME_PATH):
+            try:
+                with open(LIVE_FRAME_PATH, 'rb') as f:
+                    frame_bytes = f.read()
+                if frame_bytes:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            except Exception:
+                pass
+        elif offline_img is not None:
+            ret, buf = cv2.imencode('.jpg', offline_img)
             yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        else:
-            time.sleep(0.1)
+                   b'Content-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
+        time.sleep(0.1)
 
 @app.route('/video_feed')
 def video_feed():
@@ -177,18 +190,6 @@ def handle_recognition(data):
     print(f"Real-time update: {data['name']} marked as {data['status']}")
     emit('new_attendance', data, broadcast=True)
     send_webhook(data)
-
-@socketio.on('frame_upload')
-def handle_frame(data):
-    """Optionally handle frame streaming over sockets if preferred"""
-    global video_frame
-    # In this implementation, we assume face_app will update global state or similar
-    # For simplicity, we'll let face_app.py call a local function or use a shared queue
-    pass
-
-def update_global_frame(frame):
-    global video_frame
-    video_frame = frame
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
