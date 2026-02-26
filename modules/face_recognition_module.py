@@ -17,11 +17,28 @@ class FaceRecognitionModule:
             print("LBPH not found, falling back to basic detector only.")
             self.recognizer = None
             
-        # Fast Haar Cascade
-        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        if not os.path.exists(cascade_path):
-            cascade_path = 'haarcascade_frontalface_default.xml'
-        self.haar_detector = cv2.CascadeClassifier(cascade_path)
+        # Robust Haar Cascade path detection for Pi 1
+        cascade_path = None
+        if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+            cascade_path = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
+        
+        fallback_paths = [
+            '/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml',
+            '/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml',
+            'haarcascade_frontalface_default.xml'
+        ]
+        
+        if cascade_path is None or not os.path.exists(cascade_path):
+            for path in fallback_paths:
+                if os.path.exists(path):
+                    cascade_path = path
+                    break
+                    
+        if cascade_path is None:
+            print("Warning: Haar cascade file not found. System may fail.")
+            self.haar_detector = None
+        else:
+            self.haar_detector = cv2.CascadeClassifier(cascade_path)
         
         self.label_map = {} # ID -> Name
         self.load_known_faces()
