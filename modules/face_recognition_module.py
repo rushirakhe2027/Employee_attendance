@@ -190,9 +190,13 @@ class FaceRecognitionModule:
         # Convert to grayscale for Haar Cascade
         gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
         
-        # Use OpenCV Haar Cascade for EXTREMELY fast face detection (eliminates continuous lag)
-        # minSize=(60,60) prevents false positives
-        faces = self.haar_detector.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(60, 60))
+        # Use OpenCV Haar Cascade with HIGHER SENSITIVITY for 320x240 resolution
+        # scaleFactor=1.1 is more sensitive than 1.2
+        # minSize=(40,40) is better for smaller distant faces
+        faces = self.haar_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
+        
+        if len(faces) > 0:
+            print(f" [OK] {len(faces)} Face(s) Detected! Analyzing identity...")
         
         recognized_names = []
         

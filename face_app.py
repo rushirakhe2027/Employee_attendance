@@ -34,7 +34,7 @@ class EmployeeAttendanceApp:
         self.camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
-        self.camera.set(cv2.CAP_PROP_FPS, 10)
+        self.camera.set(cv2.CAP_PROP_FPS, 5) # Lower FPS reduces the "packet queue" crash on Pi 1
         self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         
         self.running = True
