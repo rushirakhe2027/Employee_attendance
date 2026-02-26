@@ -133,14 +133,20 @@ class EmployeeAttendanceApp:
                     continue
                 
                 frame_count += 1
-                # Only process every 5th frame to save CPU on Pi 1
-                if frame_count % 5 != 0:
-                    self.write_frame_to_disk(frame)
-                    continue
-
-                # Mirror frame
+                
+                # Mirror frame immediately
                 frame = cv2.flip(frame, 1)
-                self.write_frame_to_disk(frame)
+                
+                # --- LIVE STREAM OPTIMIZATION ---
+                # Only write to disk every 3 frames to prevent SD Card/IO lag
+                if frame_count % 3 == 0:
+                    small_stream_frame = cv2.resize(frame, (320, 240))
+                    self.write_frame_to_disk(small_stream_frame)
+
+                # --- AI DETECTION OPTIMIZATION ---
+                # Only process AI every 10 frames to save CPU on Pi 1
+                if frame_count % 10 != 0:
+                    continue
                 
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 names = self.face_module.detect_and_recognize(rgb_frame)
@@ -208,8 +214,8 @@ class EmployeeAttendanceApp:
                             time.sleep(2)
                             self.lcd.display("System Ready", "Scan Face")
 
-                
-                time.sleep(0.1)
+                # Minimal non-blocking sleep
+                time.sleep(0.01)
                 
         except KeyboardInterrupt:
             self.cleanup()
