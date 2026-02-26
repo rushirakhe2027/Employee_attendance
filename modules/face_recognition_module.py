@@ -1,9 +1,11 @@
 import cv2
-import dlib
-import numpy as np
-import face_recognition
+# Heavy AI imports moved inside methods to speed up startup on Pi 1
+# import dlib
+# import face_recognition
+
 import os
 import pandas as pd
+import numpy as np
 from scipy.spatial.distance import cosine
 from collections import defaultdict
 
@@ -19,13 +21,35 @@ class FaceRecognitionModule:
             os.makedirs(self.enc_dir, exist_ok=True)
 
         
-        # Initialize High-Speed OpenCV Face Detector (Haar Cascade) instead of Dlib
-        self.haar_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        # Robust Haar Cascade path detection
+        cascade_path = None
+        if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+            cascade_path = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
+        
+        # Fallback paths for older OpenCV versions on Pi
+        fallback_paths = [
+            '/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml',
+            '/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml',
+            'haarcascade_frontalface_default.xml'
+        ]
+        
+        if cascade_path is None or not os.path.exists(cascade_path):
+            for path in fallback_paths:
+                if os.path.exists(path):
+                    cascade_path = path
+                    break
+        
+        if cascade_path is None:
+            print("Warning: Haar cascade file not found. Face detection may fail.")
+            self.haar_detector = None
+        else:
+            self.haar_detector = cv2.CascadeClassifier(cascade_path)
         
         try:
+            import dlib # Lazy load
             self.shape_predictor = dlib.shape_predictor(self.predictor_path)
         except Exception as e:
-            print(f"Warning: Could not load shape predictor from {predictor_path}: {e}")
+            print(f"Warning: Could not load shape predictor: {e}")
             self.shape_predictor = None
             
         self.known_faces = defaultdict(list)
@@ -33,6 +57,7 @@ class FaceRecognitionModule:
         self.load_known_faces()
 
     def align_face(self, image, face):
+        import dlib  # Lazy load
         if self.shape_predictor is None:
             return None
         try:
@@ -66,6 +91,8 @@ class FaceRecognitionModule:
 
     def register_new_face(self, name, image_path):
         """Registers a new face: aligns, extracts multiple encodings, and saves both image and encoding."""
+        import face_recognition # Lazy load
+        import dlib # Lazy load
         try:
             image = face_recognition.load_image_file(image_path)
             # Find face locations
@@ -174,6 +201,7 @@ class FaceRecognitionModule:
             aligned = frame_rgb[max(0, y):y+h, max(0, x):x+w]
             
             try:
+                import face_recognition # Lazy load
                 # We already know where the face is within the crop: (top, right, bottom, left) -> (0, w, h, 0)
                 # By passing known_face_locations, we skip the slow dlib detection inside face_recognition completely!
                 encodings = face_recognition.face_encodings(aligned, known_face_locations=[(0, w, h, 0)], model="small")
