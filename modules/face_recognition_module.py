@@ -19,8 +19,9 @@ class FaceRecognitionModule:
             os.makedirs(self.enc_dir, exist_ok=True)
 
         
-        # Initialize dlib components
-        self.face_detector = dlib.get_frontal_face_detector()
+        # Initialize High-Speed OpenCV Face Detector (Haar Cascade) instead of Dlib
+        self.haar_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        
         try:
             self.shape_predictor = dlib.shape_predictor(self.predictor_path)
         except Exception as e:
@@ -159,20 +160,23 @@ class FaceRecognitionModule:
         return best_match if min_dist < self.threshold else None
 
     def detect_and_recognize(self, frame_rgb):
-        # Convert to gray for dlib if needed, but dlib likes RGB too
-        dlib_faces = self.face_detector(frame_rgb, 1)
+        # Convert to grayscale for Haar Cascade
+        gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
+        
+        # Use OpenCV Haar Cascade for EXTREMELY fast face detection (eliminates continuous lag)
+        # minSize=(60,60) prevents false positives
+        faces = self.haar_detector.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(60, 60))
         
         recognized_names = []
         
-        for face in dlib_faces:
-            aligned = self.align_face(frame_rgb, face)
-            if aligned is None:
-                # Fallback to simple crop if alignment fails
-                x, y, w, h = face.left(), face.top(), face.width(), face.height()
-                aligned = frame_rgb[max(0, y):y+h, max(0, x):x+w]
+        for (x, y, w, h) in faces:
+            # Crop exactly where the face is
+            aligned = frame_rgb[max(0, y):y+h, max(0, x):x+w]
             
             try:
-                encodings = face_recognition.face_encodings(aligned)
+                # We already know where the face is within the crop: (top, right, bottom, left) -> (0, w, h, 0)
+                # By passing known_face_locations, we skip the slow dlib detection inside face_recognition completely!
+                encodings = face_recognition.face_encodings(aligned, known_face_locations=[(0, w, h, 0)], model="small")
                 if encodings:
                     name = self.verify_face(encodings[0])
                     recognized_names.append(name if name else "Unknown")

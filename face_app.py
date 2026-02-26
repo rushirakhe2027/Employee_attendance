@@ -30,9 +30,12 @@ class EmployeeAttendanceApp:
         self.lcd = LCDModule()
         self.buzzer = BuzzerModule()
         
-        self.camera = cv2.VideoCapture(0)
-        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Use V4L2 backend — more stable on Pi 1 B+ (avoids GStreamer memory errors)
+        self.camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
+        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+        self.camera.set(cv2.CAP_PROP_FPS, 10)
+        self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         
         self.running = True
         self.last_record = {} # name -> (last_type, last_date)
@@ -122,30 +125,28 @@ class EmployeeAttendanceApp:
         print("Starting Employee Attendance System...")
         self.lcd.display("System Ready", "Scan Face")
         
+        frame_count = 0
         try:
             while self.running:
                 ret, frame = self.camera.read()
                 if not ret:
                     continue
                 
+                frame_count += 1
+                # Only process every 5th frame to save CPU on Pi 1
+                if frame_count % 5 != 0:
+                    self.write_frame_to_disk(frame)
+                    continue
+
                 # Mirror frame
                 frame = cv2.flip(frame, 1)
-
-                # Write frame to shared file for web dashboard live feed
                 self.write_frame_to_disk(frame)
-
-                # Update global frame in server if they are in same memory space 
-                # (Since they are separate processes, we'll use a trick or just simple camera sharing if on same machine)
-                # For this demonstration, we'll assume they might run together or we stream via socket
-                # Actually, I'll update app.py to expose a frame updating method if they are imported.
-                # But here we'll just run them and use individual camera access if available, 
-                # or better: we'll have app.py read the camera if we are on a single-user demo.
-                # For advanced: WebSockets could stream frames, but that's heavy.
                 
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 names = self.face_module.detect_and_recognize(rgb_frame)
                 
                 for name in names:
+
                     if name == "Unknown":
                         self.buzzer.beep_unknown()
                         self.lcd.display("Unknown! 1:Rescan", "2:Register")
