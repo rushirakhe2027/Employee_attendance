@@ -96,14 +96,24 @@ class EmployeeAttendanceApp:
                 'status': status
             })
 
-        # Feedback
+        # Advanced Greeting Logic
+        current_hour = now.hour
+        if current_hour < 12:
+            greeting = "Good Morning!"
+        elif current_hour < 17:
+            greeting = "Good Afternoon!"
+        else:
+            greeting = "Good Evening!"
+            
         print(f"[{record_type}] Marked: {name} as {status} at {current_time}")
-        self.lcd.display(f"{name}: {record_type}", f"{status}")
+        self.lcd.display(greeting, f"Hello {name}")
+        time.sleep(1.5)
+        self.lcd.display(f"{record_type} Success", status)
         
         if status == "Late Arrival":
             self.buzzer.beep_late()
         elif status == "Early Leaving":
-            self.buzzer.beep_late() # Same double beep for early leaving warning
+            self.buzzer.beep_late() 
         else:
             self.buzzer.beep_present()
             

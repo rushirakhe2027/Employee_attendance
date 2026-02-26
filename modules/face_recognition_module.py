@@ -6,7 +6,10 @@ import pandas as pd
 class FaceRecognitionModule:
     def __init__(self, face_dir="database/faces", threshold=185):
         self.face_dir = face_dir
-        self.threshold = threshold # 185 is better based on your current lighting scores
+        self.threshold = threshold 
+        
+        # Advanced Contrast Enhancement (CLAHE) - Essential for professional face recognition
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         
         # Use LBPH - The "Classic" and FASTEST method for Pi 1 hardware
         # This module doesn't need any 100MB files to load!
@@ -57,16 +60,20 @@ class FaceRecognitionModule:
         if not os.path.exists(self.face_dir):
             os.makedirs(self.face_dir)
             
-        for filename in os.listdir(self.face_dir):
+        # Sort filenames to group multiple images of the same person
+        # Pattern: "Name.jpg", "Name_2.jpg", "Name_3.jpg" etc.
+        for filename in sorted(os.listdir(self.face_dir)):
             if filename.lower().endswith(('.jpg', '.png')):
-                name = os.path.splitext(filename)[0]
-                path = os.path.join(self.face_dir, filename)
+                # Extract clean name (remove _1, _2 suffixes)
+                raw_name = os.path.splitext(filename)[0]
+                name = raw_name.split('_')[0].strip()
                 
+                path = os.path.join(self.face_dir, filename)
                 img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
                 if img is None: continue
                 
-                # Equalize lighting to make it more robust
-                img = cv2.equalizeHist(img)
+                # Use Advanced CLAHE instead of simple equalization
+                img = self.clahe.apply(img)
                 img = cv2.resize(img, (100, 100))
                 
                 faces.append(img)
@@ -105,10 +112,8 @@ class FaceRecognitionModule:
         for (x, y, w, h) in faces:
             if self.recognizer is not None and len(self.label_map) > 0:
                 roi_gray = gray[y:y+h, x:x+w]
-                # Ensure the face box is big enough to be real
-                if w < 50 or h < 50: continue
-                
-                roi_gray = cv2.equalizeHist(roi_gray)
+                # Advanced CLAHE Filtering
+                roi_gray = self.clahe.apply(roi_gray)
                 roi_gray = cv2.resize(roi_gray, (100, 100))
                 
                 label_id, confidence = self.recognizer.predict(roi_gray)
