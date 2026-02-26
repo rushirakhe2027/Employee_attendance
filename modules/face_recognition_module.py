@@ -4,9 +4,9 @@ import os
 import pandas as pd
 
 class FaceRecognitionModule:
-    def __init__(self, face_dir="database/faces", threshold=110):
+    def __init__(self, face_dir="database/faces", threshold=185):
         self.face_dir = face_dir
-        self.threshold = threshold # Higher is more forgiving (100-120 is typical for Pi)
+        self.threshold = threshold # 185 is better based on your current lighting scores
         
         # Use LBPH - The "Classic" and FASTEST method for Pi 1 hardware
         # This module doesn't need any 100MB files to load!
@@ -38,7 +38,9 @@ class FaceRecognitionModule:
             print("Warning: Haar cascade file not found. System may fail.")
             self.haar_detector = None
         else:
+            # minNeighbors=8 is more "strict" to prevent detecting objects as faces
             self.haar_detector = cv2.CascadeClassifier(cascade_path)
+            self.detect_params = {"scaleFactor": 1.1, "minNeighbors": 8, "minSize": (50, 50)}
         
         self.label_map = {} # ID -> Name
         self.load_known_faces()
@@ -96,13 +98,17 @@ class FaceRecognitionModule:
 
     def detect_and_recognize(self, frame_rgb):
         gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
-        faces = self.haar_detector.detectMultiScale(gray, 1.1, 5, minSize=(40, 40))
+        # Higher minNeighbors (8) prevents false detections
+        faces = self.haar_detector.detectMultiScale(gray, **self.detect_params)
         
         recognized_names = []
         for (x, y, w, h) in faces:
             if self.recognizer is not None and len(self.label_map) > 0:
                 roi_gray = gray[y:y+h, x:x+w]
-                roi_gray = cv2.equalizeHist(roi_gray) # Match lighting of database
+                # Ensure the face box is big enough to be real
+                if w < 50 or h < 50: continue
+                
+                roi_gray = cv2.equalizeHist(roi_gray)
                 roi_gray = cv2.resize(roi_gray, (100, 100))
                 
                 label_id, confidence = self.recognizer.predict(roi_gray)
