@@ -149,7 +149,16 @@ class EmployeeAttendanceApp:
                     continue
                 
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                names = self.face_module.detect_and_recognize(rgb_frame)
+                
+                # Check for faces using the fast Haar Cascade first
+                gray = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2GRAY)
+                faces = self.face_module.haar_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
+                
+                if len(faces) > 0:
+                    self.lcd.display("Face Detected", "Verifying...")
+                    names = self.face_module.detect_and_recognize(rgb_frame)
+                else:
+                    continue
                 
                 for name in names:
 

@@ -206,13 +206,19 @@ class FaceRecognitionModule:
             
             try:
                 import face_recognition # Lazy load
-                # We already know where the face is within the crop: (top, right, bottom, left) -> (0, w, h, 0)
-                # By passing known_face_locations, we skip the slow dlib detection inside face_recognition completely!
-                encodings = face_recognition.face_encodings(aligned, known_face_locations=[(0, w, h, 0)], model="small")
+                
+                # OPTIMIZATION: Resize the face crop to a tiny 96x96 square.
+                # This reduces the mathematical "nodes" the Pi 1 has to calculate by 90%!
+                face_tiny = cv2.resize(aligned, (96, 96))
+                
+                # Use "small" model (5 points) instead of "large" (128 points) for speed
+                encodings = face_recognition.face_encodings(face_tiny, known_face_locations=[(0, 96, 96, 0)], model="small")
+                
                 if encodings:
                     name = self.verify_face(encodings[0])
                     recognized_names.append(name if name else "Unknown")
-            except Exception:
+            except Exception as e:
+                print(f" [!] Analysis error: {e}")
                 continue
                 
         return recognized_names
