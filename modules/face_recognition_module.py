@@ -4,9 +4,9 @@ import os
 import pandas as pd
 
 class FaceRecognitionModule:
-    def __init__(self, face_dir="database/faces", threshold=80):
+    def __init__(self, face_dir="database/faces", threshold=110):
         self.face_dir = face_dir
-        self.threshold = threshold # Lower is more accurate for LBPH
+        self.threshold = threshold # Higher is more forgiving (100-120 is typical for Pi)
         
         # Use LBPH - The "Classic" and FASTEST method for Pi 1 hardware
         # This module doesn't need any 100MB files to load!
@@ -63,7 +63,8 @@ class FaceRecognitionModule:
                 img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
                 if img is None: continue
                 
-                # Ensure photo is a standard size for training
+                # Equalize lighting to make it more robust
+                img = cv2.equalizeHist(img)
                 img = cv2.resize(img, (100, 100))
                 
                 faces.append(img)
@@ -81,6 +82,7 @@ class FaceRecognitionModule:
         """Saves a grayscale face photo and re-trains the model instantly."""
         try:
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            img = cv2.equalizeHist(img) # Normalize lighting
             face = cv2.resize(img, (100, 100))
             
             save_path = os.path.join(self.face_dir, f"{name}.jpg")
@@ -100,9 +102,11 @@ class FaceRecognitionModule:
         for (x, y, w, h) in faces:
             if self.recognizer is not None and len(self.label_map) > 0:
                 roi_gray = gray[y:y+h, x:x+w]
+                roi_gray = cv2.equalizeHist(roi_gray) # Match lighting of database
                 roi_gray = cv2.resize(roi_gray, (100, 100))
                 
                 label_id, confidence = self.recognizer.predict(roi_gray)
+                print(f" [AI] Decoded Face: {self.label_map.get(label_id, '???')} (Score: {int(confidence)})")
                 
                 # Confidence in LBPH is distance (Lower is better)
                 if confidence < self.threshold:
