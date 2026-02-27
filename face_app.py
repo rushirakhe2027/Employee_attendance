@@ -159,8 +159,9 @@ class EmployeeAttendanceApp:
                     small_stream_frame = cv2.resize(frame, (320, 240))
                     self.write_frame_to_disk(small_stream_frame)
 
-                # dlib needs time — we check for face presence every 5 frames
-                if frame_count % 5 != 0:
+                # --- SPEED UP ---
+                # Check for face presence every 2 frames instead of 5
+                if frame_count % 2 != 0:
                     continue
 
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

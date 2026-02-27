@@ -20,10 +20,10 @@ class FaceRecognitionModule:
     This means dlib NEVER runs on every frame — only when detection is confident.
     """
 
-    # Tolerance of 0.5 as requested in the engineering plan.
-    # Matches your 0.400 score while still rejecting total strangers.
-    TOLERANCE = 0.5 
-    SCALE = 0.5  # Keep the speed optimization
+    # Strict tolerance for professional security.
+    # 0.42 catches the owner but rejects strangers (who usually score > 0.55).
+    TOLERANCE = 0.42 
+    SCALE = 0.5  # Maintain 4x speed scaling
 
     def __init__(self):
         # --- 1. Fast Haar Cascade Detector ---
@@ -115,14 +115,20 @@ class FaceRecognitionModule:
         if self.haar_detector is None:
             return None, None
 
-        # Downscale 50% for Haar — same detection quality, 4x smaller area to scan
+        # Downscale 50% for Haar
         small = cv2.resize(frame_rgb, (0, 0), fx=self.SCALE, fy=self.SCALE)
         gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+        
+        # --- NEW: CLAHE Lighting Enhancement ---
+        # This makes the AI work in dark or bright situations
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        gray = clahe.apply(gray)
+        
         faces = self.haar_detector.detectMultiScale(
             gray,
             scaleFactor=1.05,
             minNeighbors=6,
-            minSize=(30, 30)  # 50x50 in full-size = 25x25 in half-size
+            minSize=(30, 30)
         )
 
         if len(faces) == 0:
