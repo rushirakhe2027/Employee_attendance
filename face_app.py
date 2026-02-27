@@ -43,7 +43,8 @@ class EmployeeAttendanceApp:
         # Proper Recognition Buffer
         # 5 consistent votes required for "Professional" accuracy
         self.recognition_buffer = {} # name -> count
-        self.buffer_threshold = 5
+        self.buffer_threshold = 1 # We'll handle the 3-step logic manually now
+        self.detection_counter = 0 
         
         self.connect_to_server()
 
@@ -158,19 +159,31 @@ class EmployeeAttendanceApp:
                     small_stream_frame = cv2.resize(frame, (320, 240))
                     self.write_frame_to_disk(small_stream_frame)
 
-                # dlib needs time on Pi 1 — skip 15 frames between each AI call
-                if frame_count % 15 != 0:
+                # dlib needs time — we check for face presence every 5 frames
+                if frame_count % 5 != 0:
                     continue
 
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-                # --- STEP 2: Run full detection + dlib recognition ---
-                names = self.face_module.detect_and_recognize(rgb_frame)
-
-                if not names:
-                    # No face in frame — reset buffer
+                # --- STEP 2: Fast Pre-Detection ---
+                # check if there is even a face there (very fast)
+                bbox = self.face_module.just_detect(rgb_frame)
+                
+                if bbox:
+                    self.detection_counter += 1
+                    print(f" [DETECTION] Face present! ({self.detection_counter}/3)")
+                else:
+                    self.detection_counter = 0
                     self.recognition_buffer = {}
                     continue
+
+                # Only run the heavy dlib recognition if we saw the face 3 times
+                if self.detection_counter < 3:
+                    continue
+
+                # --- STEP 3: Heavy recognition (dlib) ---
+                names = self.face_module.detect_and_recognize(rgb_frame)
+                self.detection_counter = 0 # Reset once we try recognition
 
                 for name in names:
                     if name != "Unknown":

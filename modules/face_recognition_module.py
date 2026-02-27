@@ -20,11 +20,10 @@ class FaceRecognitionModule:
     This means dlib NEVER runs on every frame — only when detection is confident.
     """
 
-    # Strict tolerance — lower = harder to fake.
-    # 0.32 catches genuine matches (like 0.214) but rejects strangers.
-    # Default dlib value is 0.6. Professional security systems use 0.3-0.4.
-    TOLERANCE = 0.32
-    SCALE = 0.5  # Shrink all images 50% before dlib for 4x speed on Pi 1
+    # Tolerance of 0.5 as requested in the engineering plan.
+    # Matches your 0.400 score while still rejecting total strangers.
+    TOLERANCE = 0.5 
+    SCALE = 0.5  # Keep the speed optimization
 
     def __init__(self):
         # --- 1. Fast Haar Cascade Detector ---
@@ -144,6 +143,14 @@ class FaceRecognitionModule:
 
         face_crop = frame_rgb[y1:y2, x1:x2]
         return face_crop, (x, y, w, h)
+
+    def just_detect(self, frame_rgb):
+        """
+        Fast check: Is there a face? Returns bbox or None.
+        Used for the '3-consecutive-detections' buffer rule.
+        """
+        _, bbox = self._get_stable_face(frame_rgb)
+        return bbox
 
     def detect_and_recognize(self, frame_rgb):
         """
