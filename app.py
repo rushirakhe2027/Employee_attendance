@@ -19,12 +19,29 @@ def now_ist():
 def ensure_db():
     os.makedirs(DATABASE_DIR, exist_ok=True)
     os.makedirs(FACE_DIR, exist_ok=True)
+    
+    # Ensure Employees file
     if not os.path.exists(EMPLOYEES_FILE):
         pd.DataFrame(columns=['Employee_ID','Name','Phone','Department','Join_Date']
                      ).to_csv(EMPLOYEES_FILE, index=False)
+    
+    # Ensure Attendance file and migrate if needed
+    mandatory_cols = ['Employee_ID','Name','Date','Time','Status','Type']
     if not os.path.exists(ATTENDANCE_FILE):
-        pd.DataFrame(columns=['Employee_ID','Name','Date','Time','Status','Type']
-                     ).to_csv(ATTENDANCE_FILE, index=False)
+        pd.DataFrame(columns=mandatory_cols).to_csv(ATTENDANCE_FILE, index=False)
+    else:
+        try:
+            df = pd.read_csv(ATTENDANCE_FILE)
+            df.columns = [str(c).strip() for c in df.columns]
+            changed = False
+            for col in mandatory_cols:
+                if col not in df.columns:
+                    df[col] = "N/A"
+                    changed = True
+            if changed:
+                df.to_csv(ATTENDANCE_FILE, index=False)
+        except:
+            pass
 
 @app.context_processor
 def inject_now():
@@ -36,53 +53,45 @@ def index():
     ensure_db()
     try:
         df_att = pd.read_csv(ATTENDANCE_FILE)
-        # Fix possible empty file or missing headers
+        df_att.columns = [str(c).strip() for c in df_att.columns]
         if df_att.empty:
             df_att = pd.DataFrame(columns=['Employee_ID','Name','Date','Time','Status','Type'])
-    except Exception:
+    except:
         df_att = pd.DataFrame(columns=['Employee_ID','Name','Date','Time','Status','Type'])
         
     try:
         df_emp = pd.read_csv(EMPLOYEES_FILE)
-        if df_emp.empty:
-             df_emp = pd.DataFrame(columns=['Employee_ID','Name','Phone','Department','Join_Date'])
-    except Exception:
+        df_emp.columns = [str(c).strip() for c in df_emp.columns]
+    except:
         df_emp = pd.DataFrame(columns=['Employee_ID','Name','Phone','Department','Join_Date'])
-    
-    # Normalize column names
-    df_att.columns = [str(c).strip() for c in df_att.columns]
     
     today = now_ist().strftime("%Y-%m-%d")
     
-    # Safely filter for today
-    if 'Date' in df_att.columns and not df_att.empty:
-        df_today = df_att[df_att['Date'] == today]
-    else:
-        df_today = pd.DataFrame(columns=df_att.columns)
+    # Safe Stats Logic
+    df_today = df_att[df_att['Date'] == today] if 'Date' in df_att.columns else pd.DataFrame()
     
-    # Identify columns safely
-    col_status = 'Status' if 'Status' in df_today.columns else None
-    col_type   = 'Type'   if 'Type'   in df_today.columns else None
-    col_id     = 'Employee_ID' if 'Employee_ID' in df_today.columns else None
-
-    # Calculate Attendance
     present_ids = []
-    if not df_today.empty and col_id:
-        if col_type:
-            present_ids = df_today[df_today[col_type] == 'IN'][col_id].unique()
+    if not df_today.empty and 'Employee_ID' in df_today.columns:
+        if 'Type' in df_today.columns:
+            present_ids = df_today[df_today['Type'] == 'IN']['Employee_ID'].unique()
         else:
-            present_ids = df_today[col_id].unique()
+            present_ids = df_today['Employee_ID'].unique()
 
     stats = {
         'total_employees'   : len(df_emp),
         'present_today'     : len(present_ids),
-        'late_today'        : len(df_today[df_today[col_status] == 'Late Arrived']) if col_status and not df_today.empty else 0,
-        'early_leaving_today': len(df_today[df_today[col_status] == 'Early Leaving']) if col_status and not df_today.empty else 0,
-        'absent_today'      : max(0, len(df_emp) - len(present_ids)),
+        'late_today'        : len(df_today[df_today['Status'] == 'Late Arrived']) if 'Status' in df_today.columns else 0,
+        'early_leaving_today': len(df_today[df_today['Status'] == 'Early Leaving']) if 'Status' in df_today.columns else 0,
     }
+    stats['absent_today'] = max(0, stats['total_employees'] - stats['present_today'])
 
-    # Prepare latest records (handling potential missing columns in dict)
-    latest = df_att.tail(15).iloc[::-1].to_dict('records')
+    # presentation ready dictionary (ensures all keys exist for Jinja)
+    latest_df = df_att.tail(15).iloc[::-1]
+    for col in ['Employee_ID','Name','Date','Time','Status','Type']:
+        if col not in latest_df.columns:
+            latest_df[col] = "N/A"
+            
+    latest = latest_df.to_dict('records')
     return render_template('index.html', stats=stats, attendance=latest, today=today)
 
 
@@ -90,25 +99,35 @@ def index():
 @app.route('/employees')
 def employees():
     ensure_db()
-    df_emp  = pd.read_csv(EMPLOYEES_FILE)
-    df_att  = pd.read_csv(ATTENDANCE_FILE)
-    today   = now_ist().strftime("%Y-%m-%d")
+    try:
+        df_emp = pd.read_csv(EMPLOYEES_FILE)
+        df_emp.columns = [str(c).strip() for c in df_emp.columns]
+    except:
+        df_emp = pd.DataFrame(columns=['Employee_ID','Name'])
+        
+    try:
+        df_att = pd.read_csv(ATTENDANCE_FILE)
+        df_att.columns = [str(c).strip() for c in df_att.columns]
+    except:
+        df_att = pd.DataFrame(columns=['Employee_ID','Date','Type'])
 
+    today = now_ist().strftime("%Y-%m-%d")
     emp_list = df_emp.to_dict('records')
-    # Annotate with today's status
+    
     for emp in emp_list:
+        eid = str(emp.get('Employee_ID', ''))
+        nm = str(emp.get('Name', ''))
+        
         emp_today = df_att[
-            (df_att['Employee_ID'].astype(str) == str(emp['Employee_ID'])) &
+            (df_att['Employee_ID'].astype(str) == eid) &
             (df_att['Date'] == today)
-        ]
-        has_in  = not emp_today[emp_today['Type'] == 'IN'].empty
-        has_out = not emp_today[emp_today['Type'] == 'OUT'].empty
-        emp['today_status'] = (
-            "Checked Out" if has_out else
-            "Present"     if has_in  else
-            "Absent"
-        )
-        emp['has_face'] = os.path.exists(os.path.join(FACE_DIR, f"{emp['Name']}.npy"))
+        ] if 'Employee_ID' in df_att.columns and 'Date' in df_att.columns else pd.DataFrame()
+        
+        has_in  = not emp_today[emp_today['Type'] == 'IN'].empty if 'Type' in emp_today.columns else False
+        has_out = not emp_today[emp_today['Type'] == 'OUT'].empty if 'Type' in emp_today.columns else False
+        
+        emp['today_status'] = "Checked Out" if has_out else "Present" if has_in else "Absent"
+        emp['has_face'] = os.path.exists(os.path.join(FACE_DIR, f"{nm}.npy"))
 
     return render_template('employees.html', employees=emp_list)
 
@@ -117,8 +136,14 @@ def employees():
 @app.route('/employee/<emp_id>')
 def employee_detail(emp_id):
     ensure_db()
-    df_emp = pd.read_csv(EMPLOYEES_FILE)
-    df_att = pd.read_csv(ATTENDANCE_FILE)
+    try:
+        df_emp = pd.read_csv(EMPLOYEES_FILE)
+        df_att = pd.read_csv(ATTENDANCE_FILE)
+        df_emp.columns = [str(c).strip() for c in df_emp.columns]
+        df_att.columns = [str(c).strip() for c in df_att.columns]
+    except:
+        flash("Database Error", "danger")
+        return redirect(url_for('employees'))
 
     emp_rows = df_emp[df_emp['Employee_ID'].astype(str) == str(emp_id)]
     if emp_rows.empty:
@@ -126,29 +151,26 @@ def employee_detail(emp_id):
         return redirect(url_for('employees'))
 
     employee = emp_rows.iloc[0].to_dict()
-    history  = df_att[df_att['Employee_ID'].astype(str) == str(emp_id)].iloc[::-1].to_dict('records')
-
-    total_in      = len([h for h in history if h['Type'] == 'IN'])
-    late_count    = len([h for h in history if h['Status'] == 'Late Arrived'])
-    early_count   = len([h for h in history if h['Status'] == 'Early Leaving'])
-    on_time_count = len([h for h in history if h['Status'] == 'On-Time'])
+    
+    history_df = df_att[df_att['Employee_ID'].astype(str) == str(emp_id)].iloc[::-1].copy()
+    # Ensure columns for Jinja
+    for col in ['Date','Time','Status','Type']:
+        if col not in history_df.columns:
+            history_df[col] = "N/A"
+            
+    history = history_df.to_dict('records')
 
     stats = {
-        'total_days'   : total_in,
-        'on_time'      : on_time_count,
-        'late'         : late_count,
-        'early_leaving': early_count,
+        'total_days'   : len(history_df[history_df['Type'] == 'IN']) if 'Type' in history_df.columns else 0,
+        'on_time'      : len(history_df[history_df['Status'] == 'On-Time']) if 'Status' in history_df.columns else 0,
+        'late'         : len(history_df[history_df['Status'] == 'Late Arrived']) if 'Status' in history_df.columns else 0,
+        'early_leaving': len(history_df[history_df['Status'] == 'Early Leaving']) if 'Status' in history_df.columns else 0,
     }
 
-    # Photo if available
-    photo_path = f"database/faces/{employee['Name']}.jpg"
+    photo_path = f"database/faces/{employee.get('Name','')}.jpg"
     has_photo  = os.path.exists(photo_path)
 
-    return render_template('employee_history.html',
-                           employee=employee,
-                           history=history,
-                           stats=stats,
-                           has_photo=has_photo)
+    return render_template('employee_history.html', employee=employee, history=history, stats=stats, has_photo=has_photo)
 
 
 # ─── Full Attendance Log ─────────────────────────────────────────────────────
