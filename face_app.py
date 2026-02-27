@@ -111,7 +111,7 @@ class EmployeeAttendanceApp:
             greeting = "Good Evening!"
             
         print(f"[{record_type}] Marked: {name} as {status} at {current_time}")
-        self.lcd.display(greeting, f"Hello {name}")
+        self.lcd.display("IT SOLUTIONS Pvt", f"Hello {name}")
         time.sleep(1.5)
         self.lcd.display(f"{record_type} Success", status)
         
@@ -138,7 +138,7 @@ class EmployeeAttendanceApp:
 
     def run(self):
         print("Starting Employee Attendance System...")
-        self.lcd.display("System Ready", "Scan Face")
+        self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
         
         frame_count = 0
         try:
@@ -216,11 +216,10 @@ class EmployeeAttendanceApp:
                             self.lcd.display("Enter Emp ID", "in Terminal...")
                             new_id = input("Enter Employee ID: ").strip()
                             
-                            self.lcd.display("Enter Dept", "in Terminal...")
-                            new_dept = input("Enter Department: ").strip()
-                            
                             self.lcd.display("Enter Phone", "in Terminal...")
                             new_phone = input("Enter Phone Number: ").strip()
+                            
+                            new_dept = "IT SOLUTIONS" # Fixed as requested
                             
                             if new_name and new_id:
                                 # Save current frame as first photo profile
@@ -264,12 +263,12 @@ class EmployeeAttendanceApp:
                             else:
                                 print("Registration cancelled (Missing details).")
                         
-                        self.lcd.display("System Ready", "Scan Face")
+                        self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
                         
                     else:
                         if self.mark_attendance(name):
                             time.sleep(2)
-                            self.lcd.display("System Ready", "Scan Face")
+                            self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
 
                 # Minimal non-blocking sleep
                 time.sleep(0.01)
