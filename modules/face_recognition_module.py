@@ -4,7 +4,7 @@ import os
 import pandas as pd
 
 class FaceRecognitionModule:
-    def __init__(self, face_dir="database/faces", threshold=255):
+    def __init__(self, face_dir="database/faces", threshold=300):
         self.face_dir = face_dir
         self.threshold = threshold 
         
@@ -127,7 +127,7 @@ class FaceRecognitionModule:
                 roi_gray = cv2.resize(roi_gray, (100, 100))
                 
                 label_id, confidence = self.recognizer.predict(roi_gray)
-                print(f" [AI] Decoded Face: {self.label_map.get(label_id, '???')} (Score: {int(confidence)})")
+                print(f" [AI] Decoded Face: {self.label_map.get(label_id, '???')} (Score: {int(confidence)} / Limit: {self.threshold})")
                 
                 # Confidence in LBPH is distance (Lower is better)
                 if confidence < self.threshold:
