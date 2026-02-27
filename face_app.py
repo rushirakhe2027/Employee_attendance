@@ -40,6 +40,11 @@ class EmployeeAttendanceApp:
         self.running = True
         self.last_record = {} # name -> (last_type, last_date)
         
+        # Proper Recognition Buffer
+        # 5 consistent votes required for "Professional" accuracy
+        self.recognition_buffer = {} # name -> count
+        self.buffer_threshold = 5
+        
         self.connect_to_server()
 
     def connect_to_server(self):
@@ -153,95 +158,99 @@ class EmployeeAttendanceApp:
                     small_stream_frame = cv2.resize(frame, (320, 240))
                     self.write_frame_to_disk(small_stream_frame)
 
-                # Professional Mode: Processing every 20th frame to allow Dlib calculation
-                if frame_count % 20 != 0:
+                # --- STEP 1: Only process AI every 5th frame ---
+                # Haar runs fast. dlib runs only when Haar confirms a face.
+                if frame_count % 5 != 0:
                     continue
-                
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Check for faces using the fast Haar Cascade first
-                gray = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2GRAY)
-                faces = self.face_module.haar_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
-                
-                if len(faces) > 0:
-                    self.lcd.display("IT SOLUTIONS Pvt", "Analyzing...")
-                    names = self.face_module.detect_and_recognize(rgb_frame)
-                else:
-                    continue
-                
-                for name in names:
-                    if name == "Unknown":
-                        pass 
-                    else:
-                        # Dlib is highly accurate - mark attendance immediately
-                        if self.mark_attendance(name):
-                            self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
-                        continue
 
-                    if name == "Unknown":
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                # --- STEP 2: Run full detection + dlib recognition ---
+                names = self.face_module.detect_and_recognize(rgb_frame)
+
+                if not names:
+                    # No face in frame — reset buffer
+                    self.recognition_buffer = {}
+                    continue
+
+                for name in names:
+                    if name != "Unknown":
+                        # --- STEP 3: Vote-based confirmation (prevents 1-frame false matches) ---
+                        self.recognition_buffer[name] = self.recognition_buffer.get(name, 0) + 1
+                        print(f" [BUFFER] {name} confirmed {self.recognition_buffer[name]}/{self.buffer_threshold}")
+
+                        if self.recognition_buffer[name] >= self.buffer_threshold:
+                            # Confirmed! Mark attendance.
+                            self.recognition_buffer = {}
+                            if self.mark_attendance(name):
+                                time.sleep(2)
+                            self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
+                    else:
+                        # --- STEP 4: Unknown face — prompt user ---
+                        self.recognition_buffer = {}
                         self.buzzer.beep_unknown()
                         self.lcd.display("IT SOLUTIONS Pvt", "Unknown Face")
-                        print("\n" + "="*40)
-                        print(" [!] UNKNOWN / ACCURACY FAIL")
-                        print("="*40)
+                        print("\n" + "="*42)
+                        print(" [!] UNKNOWN FACE DETECTED")
+                        print("="*42)
                         print(" 1. Rescan (Try again)")
                         print(" 2. Register New Employee")
-                        print("="*40)
-                        
+                        print("="*42)
+
                         choice = input("Enter Choice (1/2): ").strip()
-                        
+
                         if choice == '2':
                             self.lcd.display("Enter Name", "in Terminal...")
                             new_name = input("Enter Full Name: ").strip()
-                            
+
                             self.lcd.display("Enter Emp ID", "in Terminal...")
                             new_id = input("Enter Employee ID: ").strip()
-                            
+
                             self.lcd.display("Enter Phone", "in Terminal...")
                             new_phone = input("Enter Phone Number: ").strip()
-                            
-                            new_dept = "IT SOLUTIONS" # Fixed as requested
-                            
+
+                            new_dept = "IT SOLUTIONS"
+
                             if new_name and new_id:
-                                # Save first photo for AI encoding
-                                temp_photo = os.path.join(DATABASE_DIR, f"cap_{new_id}.jpg")
-                                cv2.imwrite(temp_photo, frame)
-                                
-                                self.lcd.display("Stay Still...", "Syncing AI...")
-                                print(" [AI] Generating 128D Face Map (Please wait ~20s)...")
-                                success, msg = self.face_module.register_new_face(new_name, temp_photo)
-                                
+                                self.lcd.display("Stay Still...", "Registering...")
+                                print("[REG] Capturing face — please look directly at camera...")
+
+                                # Capture fresh frame for registration
+                                ret2, reg_frame = self.camera.read()
+                                if ret2:
+                                    reg_frame = cv2.flip(reg_frame, 1)
+                                    reg_rgb = cv2.cvtColor(reg_frame, cv2.COLOR_BGR2RGB)
+                                    success, msg = self.face_module.register_new_face(new_name, reg_rgb)
+                                else:
+                                    # Fallback to current frame
+                                    success, msg = self.face_module.register_new_face(new_name, rgb_frame)
+
                                 if success:
-                                    # Update CSV
-                                    df = pd.read_csv(EMPLOYEES_FILE)
-                                    new_emp = pd.DataFrame([[new_id, new_name, new_phone, new_dept, datetime.now(IST).strftime("%Y-%m-%d")]], 
+                                    # Update employees CSV
+                                    try:
+                                        df = pd.read_csv(EMPLOYEES_FILE)
+                                    except FileNotFoundError:
+                                        df = pd.DataFrame(columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date'])
+                                    new_emp = pd.DataFrame([[new_id, new_name, new_phone, new_dept,
+                                                             datetime.now(IST).strftime("%Y-%m-%d")]],
                                                            columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date'])
                                     df = pd.concat([df, new_emp], ignore_index=True)
                                     df.to_csv(EMPLOYEES_FILE, index=False)
-                                    
-                                    self.lcd.display("Sync Success!", new_name)
-                                    print(f"Successfully registered {new_name}")
+
+                                    self.lcd.display("Reg Success!", new_name)
+                                    print(f"[REG] {msg}")
                                     time.sleep(2)
                                 else:
-                                    self.lcd.display("Sync Failed", "Try again")
-                                    print(f"Error during AI sync: {msg}")
+                                    self.lcd.display("Reg Failed", "Try again")
+                                    print(f"[REG] FAILED: {msg}")
                                     time.sleep(2)
-
-                                if os.path.exists(temp_photo):
-                                    os.remove(temp_photo)
                             else:
-                                print("Registration cancelled (Missing details).")
-                        
-                        self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
-                        
-                    else:
-                        if self.mark_attendance(name):
-                            time.sleep(2)
-                            self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
+                                print("[REG] Cancelled — missing name or ID.")
 
-                # Minimal non-blocking sleep
+                        self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
+
                 time.sleep(0.01)
-                
+
         except KeyboardInterrupt:
             self.cleanup()
 

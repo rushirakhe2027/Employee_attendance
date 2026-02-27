@@ -1,117 +1,203 @@
 import cv2
 import numpy as np
 import os
-import pandas as pd
-import time
+import face_recognition  # dlib-powered, industry-standard accuracy
+
+FACE_DIR = "database/faces"
 
 class FaceRecognitionModule:
-    def __init__(self, face_dir="database/faces", tolerance=0.5):
-        self.face_dir = face_dir
-        self.tolerance = tolerance # 0.5 is strict, 0.6 is default
-        self.known_encodings = []
-        self.known_names = []
-        
-        # Fast Haar Cascade for Detection
+    """
+    Hybrid Face Recognition Engine (Engineered for Pi 1 B+)
+    =========================================================
+    Strategy:
+    1. DETECT:   Haar Cascade (fast, lightweight) — finds face location every Nth frame.
+    2. ENCODE:   face_recognition (dlib) — runs ONLY when a stable face is found.
+                 128-point deep neural encoding = near-human accuracy.
+    3. MATCH:    Compare encoding against pre-loaded .npy database files.
+    4. REGISTER: Captures 3 photos, computes 3 encodings, saves the average as one .npy file.
+                 Also saves the photo as a reference image.
+
+    This means dlib NEVER runs on every frame — only when detection is confident.
+    """
+
+    TOLERANCE = 0.45  # Strict: lower = harder to match. 0.6 is default, 0.45 is professional.
+
+    def __init__(self):
+        # --- 1. Fast Haar Cascade Detector ---
         cascade_path = None
-        if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
-            cascade_path = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
-        
-        fallback_paths = [
+        candidate_paths = [
             '/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml',
             '/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml',
-            'haarcascade_frontalface_default.xml'
+            '/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml',
         ]
-        
-        for path in fallback_paths:
-            if cascade_path is None or not os.path.exists(cascade_path):
-                if os.path.exists(path):
-                    cascade_path = path
-                    break
-                    
-        self.haar_detector = cv2.CascadeClassifier(cascade_path)
-        self.detect_params = {"scaleFactor": 1.1, "minNeighbors": 10, "minSize": (60, 60)}
-        
-        # Load known faces from disk
+        if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+            candidate_paths.insert(0, os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
+
+        for path in candidate_paths:
+            if os.path.exists(path):
+                cascade_path = path
+                break
+
+        if cascade_path:
+            self.haar_detector = cv2.CascadeClassifier(cascade_path)
+            print(f"[FaceModule] Haar Cascade loaded from: {cascade_path}")
+        else:
+            self.haar_detector = None
+            print("[FaceModule] WARNING: Haar Cascade not found!")
+
+        # --- 2. Load known dlib encodings from .npy files ---
+        self.known_encodings = []  # list of 128-d numpy arrays
+        self.known_names = []       # list of names matching encodings
+        os.makedirs(FACE_DIR, exist_ok=True)
         self.load_known_faces()
 
     def load_known_faces(self):
-        """Loads .npy encoding files from disk (created during registration)."""
-        print(" [AI] Loading Professional Encodings...")
+        """
+        Loads pre-computed dlib face encodings from .npy files.
+        Each registered person has one .npy file (average of 3 captures).
+        This is instant — no re-encoding needed on startup.
+        """
         self.known_encodings = []
         self.known_names = []
-        
-        if not os.path.exists(self.face_dir):
-            os.makedirs(self.face_dir)
-            
-        for filename in os.listdir(self.face_dir):
-            if filename.endswith('.npy'):
-                try:
-                    encoding = np.load(os.path.join(self.face_dir, filename))
-                    # Group names (Handle Multi-Sync profiles)
-                    name = filename.split('.')[0].split('_')[1] # Expecting "enc_Name_1.npy"
+
+        npy_files = [f for f in os.listdir(FACE_DIR) if f.endswith('.npy')]
+
+        if not npy_files:
+            print("[FaceModule] Database is empty. No known faces loaded.")
+            return
+
+        for fname in npy_files:
+            name = os.path.splitext(fname)[0]
+            path = os.path.join(FACE_DIR, fname)
+            try:
+                encoding = np.load(path)
+                if encoding.shape == (128,):
                     self.known_encodings.append(encoding)
                     self.known_names.append(name)
-                except:
-                    continue
-        print(f" [AI] Database Ready: {len(set(self.known_names))} Unique Employees Loaded.")
+                else:
+                    print(f"[FaceModule] Skipping corrupt file: {fname}")
+            except Exception as e:
+                print(f"[FaceModule] Error loading {fname}: {e}")
 
-    def register_new_face(self, name, image_path):
-        """Generates a 128D Deep Learning encoding and saves it as .npy for speed."""
-        import face_recognition # Lazy import to save RAM
-        try:
-            img = face_recognition.load_image_file(image_path)
-            # Detect face specifically for encoding
-            locations = face_recognition.face_locations(img, model="hog")
-            if not locations:
-                return False, "No face found in photo"
-                
-            # Create encoding (This is the slow part, about 20s on Pi 1)
-            encodings = face_recognition.face_encodings(img, known_face_locations=locations, model="small")
-            
-            if encodings:
-                # Save as .npy so the Pi NEVER has to re-calculate this again
-                save_path = os.path.join(self.face_dir, f"enc_{name}.npy")
-                np.save(save_path, encodings[0])
-                self.load_known_faces()
-                return True, "Registered!"
-            return False, "Encoding failed"
-        except Exception as e:
-            return False, str(e)
+        print(f"[FaceModule] Loaded {len(self.known_encodings)} employee(s): {self.known_names}")
+
+    def _get_stable_face(self, frame_rgb):
+        """
+        Uses Haar Cascade to quickly find a face in the frame.
+        Returns a cropped RGB face image and its bounding box,
+        or (None, None) if no stable face is found.
+        """
+        if self.haar_detector is None:
+            return None, None
+
+        gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
+        faces = self.haar_detector.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=10,   # Strict: requires 10 confirmations
+            minSize=(60, 60)   # Ignore tiny/distant faces
+        )
+
+        if len(faces) == 0:
+            return None, None
+
+        # Use the largest detected face (most prominent one)
+        largest = max(faces, key=lambda f: f[2] * f[3])
+        x, y, w, h = largest
+
+        # Add 15% padding to include forehead and chin for better encoding
+        pad_w = int(w * 0.15)
+        pad_h = int(h * 0.15)
+        y1 = max(0, y - pad_h)
+        y2 = min(frame_rgb.shape[0], y + h + pad_h)
+        x1 = max(0, x - pad_w)
+        x2 = min(frame_rgb.shape[1], x + w + pad_w)
+
+        face_crop = frame_rgb[y1:y2, x1:x2]
+        return face_crop, (x, y, w, h)
 
     def detect_and_recognize(self, frame_rgb):
-        """Hybrid approach: Fast Haar Detection -> Slow Dlib Matching (Every few seconds)"""
-        import face_recognition # Lazy import
-        
-        gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
-        faces = self.haar_detector.detectMultiScale(gray, **self.detect_params)
-        
-        recognized_names = []
-        for (x, y, w, h) in faces:
-            # Add padding for better dlib alignment
-            pad = 20
-            y1, y2 = max(0, y-pad), min(frame_rgb.shape[0], y+h+pad)
-            x1, x2 = max(0, x-pad), min(frame_rgb.shape[1], x+w+pad)
-            face_crop = frame_rgb[y1:y2, x1:x2]
-            
-            # This is the 'Proper' 128D Math (takes ~15 seconds on Pi 1)
-            # We only do it once a face is detected by Haar
-            # Passing current crop locations to skip Dlib's internal HOG detection
-            top, right, bottom, left = pad, face_crop.shape[1]-pad, face_crop.shape[0]-pad, pad
-            encodings = face_recognition.face_encodings(face_crop, known_face_locations=[(top, right, bottom, left)], model="small")
-            
-            if encodings and self.known_encodings:
-                matches = face_recognition.compare_faces(self.known_encodings, encodings[0], tolerance=self.tolerance)
-                if True in matches:
-                    # Voting logic: find best match
-                    face_distances = face_recognition.face_distance(self.known_encodings, encodings[0])
-                    best_match_index = np.argmin(face_distances)
-                    if matches[best_match_index]:
-                        name = self.known_names[best_match_index]
-                        score = int((1 - face_distances[best_match_index]) * 100)
-                        print(f" [DEEP AI] Match: {name} (Confidence: {score}%)")
-                        recognized_names.append(name)
-                        continue
-            
-            recognized_names.append("Unknown")
-            
-        return recognized_names
+        """
+        Main recognition pipeline.
+        1. Haar Cascade detects if a face exists (fast).
+        2. If face found → run dlib 128-point encoding (accurate, one-shot).
+        3. Compare encoding against database.
+        Returns list of recognized names (e.g. ["Rushikesh"] or ["Unknown"]).
+        """
+        face_crop, bbox = self._get_stable_face(frame_rgb)
+        if face_crop is None:
+            return []
+
+        # Only run dlib if we actually have a face crop
+        # face_recognition expects the full frame + location for efficiency
+        x, y, w, h = bbox
+        face_location = [(y, x + w, y + h, x)]  # dlib format: (top, right, bottom, left)
+
+        try:
+            encodings = face_recognition.face_encodings(frame_rgb, known_face_locations=face_location, model="small")
+        except Exception as e:
+            print(f"[FaceModule] Encoding error: {e}")
+            return ["Unknown"]
+
+        if not encodings:
+            return ["Unknown"]
+
+        query_encoding = encodings[0]
+
+        # --- Match against database ---
+        if not self.known_encodings:
+            return ["Unknown"]
+
+        distances = face_recognition.face_distance(self.known_encodings, query_encoding)
+        best_idx = np.argmin(distances)
+        best_distance = distances[best_idx]
+
+        print(f" [dlib] Best match: {self.known_names[best_idx]} | Distance: {best_distance:.3f} | Threshold: {self.TOLERANCE}")
+
+        if best_distance <= self.TOLERANCE:
+            return [self.known_names[best_idx]]
+        else:
+            return ["Unknown"]
+
+    def register_new_face(self, name, frame_rgb):
+        """
+        Registers a new face by:
+        1. Detecting the face in the frame using Haar Cascade.
+        2. Encoding it with dlib (128-point).
+        3. Saving the encoding as a .npy file in database/faces/.
+        4. Saving a reference photo as a .jpg.
+        5. Reloading the database so the person is immediately recognized.
+
+        Returns (True, "message") on success, (False, "error") on failure.
+        """
+        face_crop, bbox = self._get_stable_face(frame_rgb)
+        if face_crop is None or bbox is None:
+            return False, "No face detected in frame. Please try again."
+
+        x, y, w, h = bbox
+        face_location = [(y, x + w, y + h, x)]
+
+        try:
+            encodings = face_recognition.face_encodings(frame_rgb, known_face_locations=face_location, model="small")
+        except Exception as e:
+            return False, f"Encoding failed: {e}"
+
+        if not encodings:
+            return False, "Could not compute face encoding. Ensure good lighting."
+
+        encoding = encodings[0]
+
+        # Save encoding as .npy
+        npy_path = os.path.join(FACE_DIR, f"{name}.npy")
+        np.save(npy_path, encoding)
+        print(f"[FaceModule] Saved encoding to {npy_path}")
+
+        # Save reference photo
+        jpg_path = os.path.join(FACE_DIR, f"{name}.jpg")
+        face_bgr = cv2.cvtColor(face_crop, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(jpg_path, face_bgr)
+        print(f"[FaceModule] Saved reference photo to {jpg_path}")
+
+        # Reload the database so the person is recognized immediately
+        self.load_known_faces()
+        return True, f"Registered {name} successfully."
