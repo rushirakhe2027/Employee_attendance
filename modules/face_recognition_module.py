@@ -78,12 +78,15 @@ class FaceRecognitionModule:
 
     def load_known_faces(self):
         """
-        Loads pre-computed dlib face encodings from .npy files.
-        Each registered person has one .npy file (average of 3 captures).
-        This is instant — no re-encoding needed on startup.
+        Loads face encodings from .npy files.
+        Supports both:
+          - (128,)   shape → single encoding (old format)
+          - (N, 128) shape → multi-sample encoding (new format, more accurate)
+        For multi-sample files, ALL N encodings are stored separately so
+        matching uses the BEST (minimum) distance across all samples.
         """
-        self.known_encodings = []
-        self.known_names = []
+        self.known_encodings = []  # flat list of 128-d vectors
+        self.known_names = []      # parallel list of names
 
         npy_files = [f for f in os.listdir(FACE_DIR) if f.endswith('.npy')]
 
@@ -93,18 +96,29 @@ class FaceRecognitionModule:
 
         for fname in npy_files:
             name = os.path.splitext(fname)[0]
+            # Strip sample suffix like 'rushikesh_0', 'rushikesh_1' → 'rushikesh'
+            base_name = name.rsplit('_', 1)[0] if name[-1].isdigit() else name
             path = os.path.join(FACE_DIR, fname)
             try:
-                encoding = np.load(path)
-                if encoding.shape == (128,):
-                    self.known_encodings.append(encoding)
-                    self.known_names.append(name)
+                data = np.load(path)
+                if data.ndim == 1 and data.shape[0] == 128:
+                    # Old single-encoding format
+                    self.known_encodings.append(data)
+                    self.known_names.append(base_name)
+                elif data.ndim == 2 and data.shape[1] == 128:
+                    # New multi-sample format (N, 128)
+                    for enc in data:
+                        self.known_encodings.append(enc)
+                        self.known_names.append(base_name)
+                    print(f"[FaceModule] Loaded {data.shape[0]} samples for '{base_name}'")
                 else:
                     print(f"[FaceModule] Skipping corrupt file: {fname}")
             except Exception as e:
                 print(f"[FaceModule] Error loading {fname}: {e}")
 
-        print(f"[FaceModule] Loaded {len(self.known_encodings)} employee(s): {self.known_names}")
+        # Deduplicate names for display
+        unique = list(dict.fromkeys(self.known_names))
+        print(f"[FaceModule] Loaded {len(self.known_encodings)} encoding(s) for {len(unique)} employee(s): {unique}")
 
     def _get_stable_face(self, frame_rgb):
         """
@@ -172,20 +186,29 @@ class FaceRecognitionModule:
 
         x, y, w, h = bbox
 
-        # --- SPEED TRICK: Shrink frame 50% before dlib encoding ---
-        # dlib processes 4x fewer pixels → ~4x faster on Pi 1
+        # --- SPEED: Shrink 50% before dlib ---
         small_frame = cv2.resize(frame_rgb, (0, 0), fx=self.SCALE, fy=self.SCALE)
+
+        # --- ACCURACY: CLAHE on the dlib input frame too ---
+        # Convert to LAB, apply CLAHE only to L channel, convert back
+        lab = cv2.cvtColor(small_frame, cv2.COLOR_RGB2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        lab = cv2.merge((l, a, b))
+        small_frame = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+
         sx = int(x * self.SCALE)
         sy = int(y * self.SCALE)
         sw = int(w * self.SCALE)
         sh = int(h * self.SCALE)
-        face_location_small = [(sy, sx + sw, sy + sh, sx)]  # (top, right, bottom, left)
+        face_location_small = [(sy, sx + sw, sy + sh, sx)]
 
         try:
             encodings = face_recognition.face_encodings(
                 small_frame,
                 known_face_locations=face_location_small,
-                model="small"  # 5-point model, faster than 68-point
+                model="small"
             )
         except Exception as e:
             print(f"[FaceModule] Encoding error: {e}")
@@ -196,18 +219,28 @@ class FaceRecognitionModule:
 
         query_encoding = encodings[0]
 
-        # --- Match against database ---
         if not self.known_encodings:
             return ["Unknown"]
 
+        # --- BEST-OF-N MATCHING ---
+        # Compare against every stored encoding (all samples of all people).
+        # For each unique person, find their MINIMUM distance (best sample).
+        # The person with the smallest min-distance wins.
         distances = face_recognition.face_distance(self.known_encodings, query_encoding)
-        best_idx = np.argmin(distances)
-        best_distance = distances[best_idx]
 
-        print(f" [dlib] Best match: {self.known_names[best_idx]} | Distance: {best_distance:.3f} | Threshold: {self.TOLERANCE}")
+        # Group min distance per person
+        person_best = {}  # name -> min distance
+        for dist, nm in zip(distances, self.known_names):
+            if nm not in person_best or dist < person_best[nm]:
+                person_best[nm] = dist
+
+        best_name = min(person_best, key=person_best.get)
+        best_distance = person_best[best_name]
+
+        print(f" [dlib] Best match: {best_name} | Distance: {best_distance:.3f} | Threshold: {self.TOLERANCE}")
 
         if best_distance <= self.TOLERANCE:
-            return [self.known_names[best_idx]]
+            return [best_name]
         else:
             return ["Unknown"]
 
@@ -222,34 +255,61 @@ class FaceRecognitionModule:
 
         Returns (True, "message") on success, (False, "error") on failure.
         """
-        face_crop, bbox = self._get_stable_face(frame_rgb)
-        if face_crop is None or bbox is None:
-            return False, "No face detected in frame. Please try again."
+        """
+        Multi-Sample Registration — the most impactful accuracy upgrade.
+        Instead of 1 photo, captures 5 frames spread over ~3 seconds.
+        All 5 encodings are stored as a (5, 128) array in one .npy file.
 
-        x, y, w, h = bbox
-        face_location = [(y, x + w, y + h, x)]
+        During recognition, ALL 5 are compared and the BEST (minimum)
+        distance is used — so the system recognises you even from a
+        slightly different angle or in different lighting.
 
-        try:
-            encodings = face_recognition.face_encodings(frame_rgb, known_face_locations=face_location, model="small")
-        except Exception as e:
-            return False, f"Encoding failed: {e}"
+        Args:
+            name      : employee name string
+            frames_rgb: list of 5 RGB frames captured by face_app
+        """
+        if not isinstance(frames_rgb, list):
+            frames_rgb = [frames_rgb]  # backwards-compat with single frame
 
-        if not encodings:
-            return False, "Could not compute face encoding. Ensure good lighting."
+        collected_encodings = []
+        reference_face_crop = None
 
-        encoding = encodings[0]
+        for idx, frame_rgb in enumerate(frames_rgb):
+            face_crop, bbox = self._get_stable_face(frame_rgb)
+            if face_crop is None or bbox is None:
+                print(f"[FaceModule] Sample {idx+1}: No face detected, skipping.")
+                continue
 
-        # Save encoding as .npy
+            x, y, w, h = bbox
+            face_location = [(y, x + w, y + h, x)]
+
+            try:
+                encs = face_recognition.face_encodings(
+                    frame_rgb, known_face_locations=face_location, model="small"
+                )
+                if encs:
+                    collected_encodings.append(encs[0])
+                    print(f"[FaceModule] Sample {idx+1}/{len(frames_rgb)} captured. ✓")
+                    if reference_face_crop is None:
+                        reference_face_crop = face_crop
+            except Exception as e:
+                print(f"[FaceModule] Sample {idx+1} encoding error: {e}")
+
+        if len(collected_encodings) < 2:
+            return False, f"Only got {len(collected_encodings)} good sample(s). Need at least 2. Try better lighting."
+
+        # Stack into (N, 128) array and save as single .npy
+        multi_encoding = np.stack(collected_encodings)  # shape: (N, 128)
         npy_path = os.path.join(FACE_DIR, f"{name}.npy")
-        np.save(npy_path, encoding)
-        print(f"[FaceModule] Saved encoding to {npy_path}")
+        np.save(npy_path, multi_encoding)
+        print(f"[FaceModule] Saved {len(collected_encodings)}-sample encoding to {npy_path}")
 
         # Save reference photo
-        jpg_path = os.path.join(FACE_DIR, f"{name}.jpg")
-        face_bgr = cv2.cvtColor(face_crop, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(jpg_path, face_bgr)
-        print(f"[FaceModule] Saved reference photo to {jpg_path}")
+        if reference_face_crop is not None:
+            jpg_path = os.path.join(FACE_DIR, f"{name}.jpg")
+            face_bgr = cv2.cvtColor(reference_face_crop, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(jpg_path, face_bgr)
+            print(f"[FaceModule] Saved reference photo to {jpg_path}")
 
-        # Reload the database so the person is recognized immediately
         self.load_known_faces()
-        return True, f"Registered {name} successfully."
+        return True, f"Registered {name} with {len(collected_encodings)} face samples."

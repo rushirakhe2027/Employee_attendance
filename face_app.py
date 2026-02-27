@@ -225,18 +225,23 @@ class EmployeeAttendanceApp:
                             new_dept = "IT SOLUTIONS"
 
                             if new_name and new_id:
-                                self.lcd.display("Stay Still...", "Registering...")
-                                print("[REG] Capturing face — please look directly at camera...")
+                                self.lcd.display("Stay Still...", "5 Samples...")
+                                print("[REG] Capturing 5 face samples — look directly at camera...")
+                                print("[REG] Hold still for 2.5 seconds...")
 
-                                # Capture fresh frame for registration
-                                ret2, reg_frame = self.camera.read()
-                                if ret2:
-                                    reg_frame = cv2.flip(reg_frame, 1)
-                                    reg_rgb = cv2.cvtColor(reg_frame, cv2.COLOR_BGR2RGB)
-                                    success, msg = self.face_module.register_new_face(new_name, reg_rgb)
-                                else:
-                                    # Fallback to current frame
-                                    success, msg = self.face_module.register_new_face(new_name, rgb_frame)
+                                # Capture 5 frames spread over 2.5 seconds
+                                reg_frames = []
+                                for i in range(5):
+                                    print(f"[REG] Capturing sample {i+1}/5...")
+                                    ret2, reg_frame = self.camera.read()
+                                    if ret2:
+                                        reg_frame = cv2.flip(reg_frame, 1)
+                                        reg_frames.append(cv2.cvtColor(reg_frame, cv2.COLOR_BGR2RGB))
+                                    else:
+                                        reg_frames.append(rgb_frame)  # Fallback
+                                    time.sleep(0.5)
+
+                                success, msg = self.face_module.register_new_face(new_name, reg_frames)
 
                                 if success:
                                     # Update employees CSV
