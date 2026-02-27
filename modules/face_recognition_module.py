@@ -4,7 +4,7 @@ import os
 import pandas as pd
 
 class FaceRecognitionModule:
-    def __init__(self, face_dir="database/faces", threshold=300):
+    def __init__(self, face_dir="database/faces", threshold=245):
         self.face_dir = face_dir
         self.threshold = threshold 
         
@@ -12,10 +12,10 @@ class FaceRecognitionModule:
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         
         # LBPH Configuration: 
-        # radius=1, neighbors=8 (default)
-        # grid_x=10, grid_y=10 (Enhanced from 8x8 for better accuracy on Pi 1)
+        # radius=1, neighbors=8 
+        # grid_x=12, grid_y=12 (Professional level detail)
         try:
-            self.recognizer = cv2.face.LBPHFaceRecognizer_create(radius=1, neighbors=8, grid_x=10, grid_y=10)
+            self.recognizer = cv2.face.LBPHFaceRecognizer_create(radius=1, neighbors=8, grid_x=12, grid_y=12)
         except AttributeError:
             # Fallback if opencv-contrib is not installed
             print("LBPH not found, falling back to basic detector only.")
@@ -42,9 +42,9 @@ class FaceRecognitionModule:
             print("Warning: Haar cascade file not found. System may fail.")
             self.haar_detector = None
         else:
-            # minNeighbors=8 is more "strict" to prevent detecting objects as faces
+            # minNeighbors=12 is very strict to stop false face detections
             self.haar_detector = cv2.CascadeClassifier(cascade_path)
-            self.detect_params = {"scaleFactor": 1.1, "minNeighbors": 8, "minSize": (50, 50)}
+            self.detect_params = {"scaleFactor": 1.1, "minNeighbors": 12, "minSize": (60, 60)}
         
         self.label_map = {} # ID -> Name
         self.load_known_faces()
@@ -75,7 +75,7 @@ class FaceRecognitionModule:
                 
                 # Use Advanced CLAHE instead of simple equalization
                 img = self.clahe.apply(img)
-                img = cv2.resize(img, (100, 100))
+                img = cv2.resize(img, (160, 160)) # Increased from 100 for better detail
                 
                 faces.append(img)
                 labels.append(label_id)
@@ -92,8 +92,8 @@ class FaceRecognitionModule:
         """Saves a grayscale face photo and re-trains the model instantly."""
         try:
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-            img = cv2.equalizeHist(img) # Normalize lighting
-            face = cv2.resize(img, (100, 100))
+            img = self.clahe.apply(img) # Normalize lighting
+            face = cv2.resize(img, (160, 160))
             
             save_path = os.path.join(self.face_dir, f"{name}.jpg")
             cv2.imwrite(save_path, face)
@@ -124,7 +124,7 @@ class FaceRecognitionModule:
                 
                 # Advanced CLAHE Filtering
                 roi_gray = self.clahe.apply(roi_gray)
-                roi_gray = cv2.resize(roi_gray, (100, 100))
+                roi_gray = cv2.resize(roi_gray, (160, 160))
                 
                 label_id, confidence = self.recognizer.predict(roi_gray)
                 print(f" [AI] Decoded Face: {self.label_map.get(label_id, '???')} (Score: {int(confidence)} / Limit: {self.threshold})")

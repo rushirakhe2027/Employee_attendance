@@ -41,9 +41,9 @@ class EmployeeAttendanceApp:
         self.last_record = {} # name -> (last_type, last_date)
         
         # Proper Recognition Buffer
-        # To be accurate, we need 3 consistent "votes" before marking attendance
+        # 5 consistent votes required for "Professional" accuracy
         self.recognition_buffer = {} # name -> count
-        self.buffer_threshold = 3
+        self.buffer_threshold = 5
         
         self.connect_to_server()
 
@@ -158,9 +158,8 @@ class EmployeeAttendanceApp:
                     small_stream_frame = cv2.resize(frame, (320, 240))
                     self.write_frame_to_disk(small_stream_frame)
 
-                # --- AI DETECTION OPTIMIZATION ---
-                # Only process AI every 10 frames to save CPU on Pi 1
-                if frame_count % 10 != 0:
+                # Professional Accuracy: Process every 5th frame for 160x160 detail
+                if frame_count % 5 != 0:
                     continue
                 
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -186,11 +185,11 @@ class EmployeeAttendanceApp:
                         self.recognition_buffer[name] = self.recognition_buffer.get(name, 0) + 1
                         
                         if self.recognition_buffer[name] >= self.buffer_threshold:
-                            # 3 Consistent Frames FOUND!
+                            # 5 Consistent Frames FOUND!
                             if self.mark_attendance(name):
                                 self.recognition_buffer = {} # Reset
                                 time.sleep(2)
-                                self.lcd.display("System Ready", "Scan Face")
+                                self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
                             continue
                         else:
                             # Still analyzing
@@ -199,12 +198,12 @@ class EmployeeAttendanceApp:
 
                     if name == "Unknown":
                         self.buzzer.beep_unknown()
-                        self.lcd.display("Unknown! 1:Rescan", "2:Register")
+                        self.lcd.display("IT SOLUTIONS Pvt", "Unknown Face")
                         print("\n" + "="*40)
-                        print(" [!] UNKNOWN FACE DETECTED")
+                        print(" [!] UNKNOWN / ACCURACY FAIL")
                         print("="*40)
                         print(" 1. Rescan (Try again)")
-                        print(" 2. Register New Employee (Directly here)")
+                        print(" 2. Register New Employee")
                         print("="*40)
                         
                         choice = input("Enter Choice (1/2): ").strip()
