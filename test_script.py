@@ -96,7 +96,7 @@ class FacialAttendanceSystem:
 
     def initialize_camera(self):
         self.camera = Picamera2()
-        config = camera.create_preview_configuration(
+        config = self.camera.create_preview_configuration(  # BUG FIX: was `camera.` (missing self)
             main={"size": (640, 480)},
             lores={"size": (320, 240)},
             display="lores"
