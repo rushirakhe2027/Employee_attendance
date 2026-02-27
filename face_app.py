@@ -93,7 +93,7 @@ class EmployeeAttendanceApp:
         if has_out:
             # Already OUT for today → refuse
             self.lcd.display("Already Done", "Try Tomorrow!")
-            self.buzzer.beep_unknown()
+            self.buzzer.beep_rejected()      # ▪▪▪▪▪  5 rapid — access denied
             print(f"[SKIP] {name} already checked OUT today.")
             self.cooldown_until[name] = now.__class__(
                 now.year, now.month, now.day, 23, 59, 59, tzinfo=IST)
@@ -104,11 +104,11 @@ class EmployeeAttendanceApp:
             if current_time <= office_start:
                 status = "On-Time"
                 lcd2   = "On-Time Arrival"
-                self.buzzer.beep_present()
+                self.buzzer.beep_on_time()          # ▬  1 long
             else:
                 status = "Late Arrived"
                 lcd2   = "Late Arrived!"
-                self.buzzer.beep_late()
+                self.buzzer.beep_late_or_early()    # ▪ ▪ ▪  3 short
             rec_type = "IN"
             self.lcd.display(f"Welcome!", name[:16])
             time.sleep(1)
@@ -119,11 +119,11 @@ class EmployeeAttendanceApp:
             if current_time < office_end:
                 status = "Early Leaving"
                 lcd2   = "Early Leaving!"
-                self.buzzer.beep_late()
+                self.buzzer.beep_late_or_early()    # ▪ ▪ ▪  3 short
             else:
                 status = "Left"
                 lcd2   = "Have a nice day"
-                self.buzzer.beep_present()
+                self.buzzer.beep_on_time()          # ▬  1 long
             rec_type = "OUT"
             self.lcd.display("Goodbye!", name[:16])
             time.sleep(1)
