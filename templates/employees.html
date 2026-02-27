@@ -2,57 +2,8 @@
 
 {% block content %}
 <header>
-    <h1>Employee Management</h1>
-    <button class="btn" onclick="openModal()">+ Add Employee</button>
+    <h1>Employee Directory</h1>
 </header>
-
-<div id="modalOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 90; backdrop-filter: blur(4px);"></div>
-
-<div id="addModal" class="card" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; width: 450px; background: white; border: none; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem;">
-        <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--text-main);">Add New Employee</h3>
-        <span style="cursor: pointer; font-size: 1.5rem; color: var(--text-muted); line-height: 1;" onclick="closeModal()">&times;</span>
-    </div>
-    <form action="{{ url_for('employees') }}" method="POST" enctype="multipart/form-data">
-        <div style="display: grid; gap: 1.25rem;">
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.8125rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Employee ID</label>
-                <input type="text" name="emp_id" placeholder="e.g. EMP001" required style="width: 100%; padding: 0.75rem; border-radius: 0.75rem; border: 1px solid var(--border); background: #f8fafc; color: var(--text-main); font-size: 0.9375rem;">
-            </div>
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.8125rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Full Name</label>
-                <input type="text" name="name" placeholder="John Doe" required style="width: 100%; padding: 0.75rem; border-radius: 0.75rem; border: 1px solid var(--border); background: #f8fafc; color: var(--text-main); font-size: 0.9375rem;">
-            </div>
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.8125rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Phone Number</label>
-                <input type="text" name="phone" placeholder="+1 234 567 890" required style="width: 100%; padding: 0.75rem; border-radius: 0.75rem; border: 1px solid var(--border); background: #f8fafc; color: var(--text-main); font-size: 0.9375rem;">
-            </div>
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.8125rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Department</label>
-                <input type="text" name="dept" placeholder="Engineering" required style="width: 100%; padding: 0.75rem; border-radius: 0.75rem; border: 1px solid var(--border); background: #f8fafc; color: var(--text-main); font-size: 0.9375rem;">
-            </div>
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.8125rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Employee Photo</label>
-                <input type="file" name="photo" accept="image/*" required style="width: 100%; padding: 0.5rem; background: #f8fafc; color: var(--text-main); border: 1px dashed var(--primary); border-radius: 0.75rem;">
-                <small style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.25rem; display: block;">Upload a clear face photo for recognition.</small>
-            </div>
-            <div style="margin-top: 0.5rem;">
-                <button type="submit" class="btn" style="width: 100%; justify-content: center; padding: 0.875rem;">Register Employee</button>
-            </div>
-        </div>
-    </form>
-</div>
-
-<script>
-    function openModal() {
-        document.getElementById('addModal').style.display = 'block';
-        document.getElementById('modalOverlay').style.display = 'block';
-    }
-    function closeModal() {
-        document.getElementById('addModal').style.display = 'none';
-        document.getElementById('modalOverlay').style.display = 'none';
-    }
-</script>
 
 <div class="card">
     <table>
@@ -60,32 +11,49 @@
             <tr>
                 <th>ID</th>
                 <th>Name</th>
-                <th>Department</th>
-                <th>Join Date</th>
+                <th>Status Today</th>
+                <th>Face Data</th>
                 <th>Action</th>
             </tr>
         </thead>
         <tbody>
             {% for emp in employees %}
             <tr>
-                <td>{{ emp.Employee_ID }}</td>
+                <td><span style="font-weight: 600;">{{ emp.Employee_ID }}</span></td>
                 <td>{{ emp.Name }}</td>
-                <td>{{ emp.Department }}</td>
-                <td>{{ emp.Join_Date }}</td>
+                <td>
+                    {% if emp.today_status == 'Checked Out' %}
+                        <span class="status-pill status-left">Checked Out</span>
+                    {% elif emp.today_status == 'Present' %}
+                        <span class="status-pill status-present">Present (In)</span>
+                    {% else %}
+                        <span style="color: #94a3b8; font-size: 0.75rem; font-weight: 600;">ABSENT / NOT SCANNED</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if emp.has_face %}
+                        <span style="color: var(--success); font-size: 0.75rem; font-weight: 700;">✓ REGISTERED</span>
+                    {% else %}
+                        <span style="color: var(--danger); font-size: 0.75rem; font-weight: 700;">⚠ MISSING</span>
+                    {% endif %}
+                </td>
                 <td>
                     <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ url_for('employee_history', emp_id=emp.Employee_ID) }}" class="btn" style="font-size: 0.75rem; background: var(--secondary);">History</a>
-                        <a href="{{ url_for('delete_employee', emp_id=emp.Employee_ID) }}" class="btn btn-danger" style="font-size: 0.75rem;">Delete</a>
+                        <a href="{{ url_for('employee_detail', emp_id=emp.Employee_ID) }}" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;">View History</a>
+                        <a href="{{ url_for('delete_employee', emp_id=emp.Employee_ID) }}" class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="return confirm('Erase this employee and their face math data?')">Erase</a>
                     </div>
                 </td>
-
             </tr>
             {% else %}
             <tr>
-                <td colspan="5" style="text-align: center; color: #94a3b8; padding: 2rem;">No employees registered.</td>
+                <td colspan="5" style="text-align: center; color: #94a3b8; padding: 4rem;">No employees registered in the system.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+</div>
+
+<div style="text-align: center; margin-top: 1rem; color: var(--text-muted); font-size: 0.8125rem;">
+    * Registration must be done via the Physical Console (face_app.py) for face capture.
 </div>
 {% endblock %}

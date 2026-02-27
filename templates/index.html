@@ -25,64 +25,28 @@
     </div>
 </div>
 
-
-<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
-    <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <h2 style="font-size: 1.25rem;">Live Feed</h2>
-            <span id="feedStatus" style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 700; color: var(--text-muted);">
-                <span id="feedDot" style="width: 8px; height: 8px; background: var(--text-muted); border-radius: 50%; display: inline-block;"></span>
-                CONNECTING...
-            </span>
-        </div>
-        <div style="background: #000; border-radius: 1rem; overflow: hidden; aspect-ratio: 16/9; position: relative;">
-            <img id="liveFeed" src="{{ url_for('video_feed') }}"
-                 style="width: 100%; height: 100%; object-fit: cover;"
-                 onload="setFeedOnline()"
-                 onerror="setFeedOffline()">
-            <div style="position: absolute; top: 1rem; left: 1rem; background: rgba(0,0,0,0.55); color: white; padding: 0.25rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem; backdrop-filter: blur(4px);">📷 Main Building Entrance</div>
-        </div>
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h2 style="font-size: 1.25rem;">Recent Activity</h2>
+        <a href="{{ url_for('attendance') }}" style="color: var(--primary); font-size: 0.875rem; font-weight: 600; text-decoration: none;">View All Logs →</a>
     </div>
-
-    <div class="card">
-        <h2 style="font-size: 1.25rem; margin-bottom: 1.5rem;">Recent Logs</h2>
-        <div style="display: flex; flex-direction: column; gap: 1rem;">
-            {% for record in attendance %}
-            <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 1rem; border-bottom: 1px solid var(--border);">
-                <div>
-                    <div style="font-weight: 600; font-size: 0.9375rem;">{{ record.Name }}</div>
-                    <div style="color: var(--text-muted); font-size: 0.75rem;">{{ record.Time }}</div>
-                </div>
+    <div style="display: flex; flex-direction: column; gap: 1rem;">
+        {% for record in attendance %}
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border: 1px solid var(--border); border-radius: 0.75rem; background: #fafafa;">
+            <div>
+                <div style="font-weight: 600; font-size: 1rem;">{{ record.Name }}</div>
+                <div style="color: var(--text-muted); font-size: 0.8125rem;">{{ record.Date }} at {{ record.Time }}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: #eee; border-radius: 0.25rem; font-weight: 600; color: #555;">{{ record.Type }}</span>
                 <span class="status-pill status-{{ record.Status.lower().replace(' ', '-') }}">{{ record.Status }}</span>
             </div>
-            {% else %}
-            <div style="text-align: center; color: var(--text-muted); padding: 1rem;">No recent activity</div>
-            {% endfor %}
         </div>
+        {% else %}
+        <div style="text-align: center; color: var(--text-muted); padding: 3rem; background: #f8fafc; border-radius: 1rem; border: 2px dashed var(--border);">
+            No attendance records found for today.
+        </div>
+        {% endfor %}
     </div>
 </div>
-
-<style>
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.3; }
-    100% { opacity: 1; }
-}
-</style>
-
-<script>
-function setFeedOnline() {
-    const dot = document.getElementById('feedDot');
-    const label = document.getElementById('feedStatus');
-    dot.style.background = 'var(--danger)';
-    dot.style.animation = 'pulse 1.5s infinite';
-    label.style.color = 'var(--danger)';
-    label.innerHTML = '<span id="feedDot" style="width:8px;height:8px;background:var(--danger);border-radius:50%;display:inline-block;animation:pulse 1.5s infinite"></span> LIVE';
-}
-function setFeedOffline() {
-    const label = document.getElementById('feedStatus');
-    label.style.color = 'var(--text-muted)';
-    label.innerHTML = '<span style="width:8px;height:8px;background:#aaa;border-radius:50%;display:inline-block;"></span> OFFLINE';
-}
-</script>
 {% endblock %}
