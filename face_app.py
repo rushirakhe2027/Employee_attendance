@@ -140,57 +140,65 @@ class EmployeeAttendanceApp:
         # ── Decision Tree ────────────────────────────────────────────────────
         if has_out:
             # Already OUT for today → refuse
-            self.lcd.display("Already Done", "Try Tomorrow!")
-            self.buzzer.beep_rejected()      # ▪▪▪▪▪  5 rapid — access denied
+            self.lcd.display("Checked OUT", "Try Tomorrow!")
+            self.buzzer.beep_rejected()
             print(f"[SKIP] {name} already checked OUT today.")
-            self.cooldown_until[name] = now.__class__(
-                now.year, now.month, now.day, 23, 59, 59, tzinfo=IST)
+            self.cooldown_until[name] = now + timedelta(hours=6)
             return
 
+        # ── Decision Tree ────────────────────────────────────────────────────
         if not has_in:
-            # ── FIRST SCAN OF THE DAY = CHECK-IN ──────────────────────────
-            if current_time <= office_start:
-                status = "On-Time"
-                lcd2   = "On-Time Arrival"
-                self.buzzer.beep_on_time()          # ▬  1 long
+            # First scan of the day
+            if current_time <= noon:
+                # Normal Morning IN
+                status = "On-Time" if current_time <= office_start else "Late Arrived"
+                rec_type = "IN"
+                msg1, msg2 = "Welcome!", status
+                self.buzzer.beep_on_time() if status == "On-Time" else self.buzzer.beep_late_or_early()
+                self._save_attendance(emp_id, name, today, current_t, status, "IN")
+                self.lcd.display(msg1, name[:16])
+                time.sleep(1)
+                self.lcd.display("IN Recorded", msg2)
             else:
-                status = "Late Arrived"
-                lcd2   = "Late Arrived!"
-                self.buzzer.beep_late_or_early()    # ▪ ▪ ▪  3 short
-            rec_type = "IN"
-            self.lcd.display(f"Welcome!", name[:16])
-            time.sleep(1)
-            self.lcd.display("IN  Recorded", lcd2)
-
+                # Afternoon/Evening scan BUT NO IN RECORD
+                # Auto-mark IN (Late) and then mark OUT
+                print(f"[AUTO] Marking IN for {name} (Missed morning scan)")
+                self._save_attendance(emp_id, name, today, "09:31:00", "Late Arrived", "IN")
+                
+                status = "Left" if current_time >= office_end else "Early Leaving"
+                msg1, msg2 = "Goodbye!", status
+                self.buzzer.beep_on_time() if status == "Left" else self.buzzer.beep_late_or_early()
+                self._save_attendance(emp_id, name, today, current_t, status, "OUT")
+                
+                self.lcd.display(msg1, name[:16])
+                time.sleep(1)
+                self.lcd.display("OUT Recorded", msg2)
         else:
-            # ── SECOND SCAN = CHECK-OUT ────────────────────────────────────
-            if current_time < office_end:
-                status = "Early Leaving"
-                lcd2   = "Early Leaving!"
-                self.buzzer.beep_late_or_early()    # ▪ ▪ ▪  3 short
-            else:
-                status = "Left"
-                lcd2   = "Have a nice day"
-                self.buzzer.beep_on_time()          # ▬  1 long
+            # Already has IN, so this is OUT
+            status = "Left" if current_time >= office_end else "Early Leaving"
             rec_type = "OUT"
-            self.lcd.display("Goodbye!", name[:16])
+            msg1, msg2 = "Goodbye!", status
+            self.buzzer.beep_on_time() if status == "Left" else self.buzzer.beep_late_or_early()
+            self._save_attendance(emp_id, name, today, current_t, status, "OUT")
+            
+            self.lcd.display(msg1, name[:16])
             time.sleep(1)
-            self.lcd.display("OUT Recorded", lcd2)
+            self.lcd.display("OUT Recorded", msg2)
 
-        # Save to CSV
-        new_row = pd.DataFrame([[emp_id, name, today, current_t, status, rec_type]],
+        # Return to idle screen
+        time.sleep(2)
+        self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
+
+    def _save_attendance(self, emp_id, name, date, time_str, status, rec_type):
+        new_row = pd.DataFrame([[emp_id, name, date, time_str, status, rec_type]],
                                columns=['Employee_ID','Name','Date','Time','Status','Type'])
         new_row.to_csv(ATTENDANCE_FILE, mode='a',
                        header=not os.path.exists(ATTENDANCE_FILE), index=False)
+        print(f"[{rec_type}] {name} | {status} | {time_str}")
 
-        print(f"[{rec_type}] {name} | {status} | {current_t}")
-
-        # 30-second cooldown so they don't triple-scan
+        # 30-second cooldown
         from datetime import timedelta
-        self.cooldown_until[name] = now + timedelta(seconds=30)
-
-        time.sleep(2)
-        self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
+        self.cooldown_until[name] = now_ist() + timedelta(seconds=30)
 
     # ─── Registration ─────────────────────────────────────────────────────────
     def register_employee(self, rgb_frame):

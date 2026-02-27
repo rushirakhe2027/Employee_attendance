@@ -20,9 +20,9 @@ class FaceRecognitionModule:
     This means dlib NEVER runs on every frame — only when detection is confident.
     """
 
-    # Strict tolerance for professional security.
-    # 0.42 catches the owner but rejects strangers (who usually score > 0.55).
-    TOLERANCE = 0.42 
+    # Tightened tolerance to 0.38 to prevent 'wrong predictions'
+    # Smaller = Stricter. 
+    TOLERANCE = 0.38 
     SCALE = 0.5  # Maintain 4x speed scaling
 
     def __init__(self):
@@ -217,31 +217,26 @@ class FaceRecognitionModule:
         if not encodings:
             return ["Unknown"]
 
-        query_encoding = encodings[0]
+        face_encoding = encodings[0]
 
         if not self.known_encodings:
             return ["Unknown"]
 
-        # --- BEST-OF-N MATCHING ---
-        # Compare against every stored encoding (all samples of all people).
-        # For each unique person, find their MINIMUM distance (best sample).
-        # The person with the smallest min-distance wins.
-        distances = face_recognition.face_distance(self.known_encodings, query_encoding)
+        # 1. Calculate distances to all stored sample encodings
+        distances = face_recognition.face_distance(self.known_encodings, face_encoding)
+        best_match_index = np.argmin(distances)
+        min_distance = distances[best_match_index]
 
-        # Group min distance per person
-        person_best = {}  # name -> min distance
-        for dist, nm in zip(distances, self.known_names):
-            if nm not in person_best or dist < person_best[nm]:
-                person_best[nm] = dist
-
-        best_name = min(person_best, key=person_best.get)
-        best_distance = person_best[best_name]
-
-        # Match result is silent — terminal only shows confirmed name or Unknown menu
-
-        if best_distance <= self.TOLERANCE:
-            return [best_name]
+        # 2. Threshold Check
+        if min_distance <= self.TOLERANCE:
+            name = self.known_names[best_match_index]
+            confidence = round((1 - min_distance) * 100, 1)
+            print(f"[AI] Confirmed Match: {name} ({confidence}% confidence)")
+            return [name]
         else:
+            # Optional: Log close but failed matches for tuning
+            if min_distance < 0.5:
+                print(f"[AI] Rejected Candidate: {self.known_names[best_match_index]} (too far: {round(min_distance, 3)})")
             return ["Unknown"]
 
     def register_new_face(self, name, frame_rgb):
