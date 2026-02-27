@@ -20,7 +20,11 @@ class FaceRecognitionModule:
     This means dlib NEVER runs on every frame — only when detection is confident.
     """
 
-    TOLERANCE = 0.45  # Strict: lower = harder to match. 0.6 is default, 0.45 is professional.
+    # Strict tolerance — lower = harder to fake.
+    # 0.32 catches genuine matches (like 0.214) but rejects strangers.
+    # Default dlib value is 0.6. Professional security systems use 0.3-0.4.
+    TOLERANCE = 0.32
+    SCALE = 0.5  # Shrink all images 50% before dlib for 4x speed on Pi 1
 
     def __init__(self):
         # --- 1. Fast Haar Cascade Detector ---
@@ -112,22 +116,25 @@ class FaceRecognitionModule:
         if self.haar_detector is None:
             return None, None
 
-        gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
+        # Downscale 50% for Haar — same detection quality, 4x smaller area to scan
+        small = cv2.resize(frame_rgb, (0, 0), fx=self.SCALE, fy=self.SCALE)
+        gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
         faces = self.haar_detector.detectMultiScale(
             gray,
-            scaleFactor=1.05,  # Smaller step = more thorough scan
-            minNeighbors=6,    # Balanced: strict enough to avoid false positives but still finds faces
-            minSize=(50, 50)   # Minimum face size (50x50 for Pi's 320x240 resolution)
+            scaleFactor=1.05,
+            minNeighbors=6,
+            minSize=(30, 30)  # 50x50 in full-size = 25x25 in half-size
         )
 
         if len(faces) == 0:
             return None, None
 
-        # Use the largest detected face (most prominent one)
+        # Scale coords back to full-size
+        inv = 1.0 / self.SCALE
         largest = max(faces, key=lambda f: f[2] * f[3])
-        x, y, w, h = largest
+        x, y, w, h = [int(v * inv) for v in largest]
 
-        # Add 15% padding to include forehead and chin for better encoding
+        # 15% padding for forehead / chin
         pad_w = int(w * 0.15)
         pad_h = int(h * 0.15)
         y1 = max(0, y - pad_h)
@@ -150,13 +157,23 @@ class FaceRecognitionModule:
         if face_crop is None:
             return []
 
-        # Only run dlib if we actually have a face crop
-        # face_recognition expects the full frame + location for efficiency
         x, y, w, h = bbox
-        face_location = [(y, x + w, y + h, x)]  # dlib format: (top, right, bottom, left)
+
+        # --- SPEED TRICK: Shrink frame 50% before dlib encoding ---
+        # dlib processes 4x fewer pixels → ~4x faster on Pi 1
+        small_frame = cv2.resize(frame_rgb, (0, 0), fx=self.SCALE, fy=self.SCALE)
+        sx = int(x * self.SCALE)
+        sy = int(y * self.SCALE)
+        sw = int(w * self.SCALE)
+        sh = int(h * self.SCALE)
+        face_location_small = [(sy, sx + sw, sy + sh, sx)]  # (top, right, bottom, left)
 
         try:
-            encodings = face_recognition.face_encodings(frame_rgb, known_face_locations=face_location, model="small")
+            encodings = face_recognition.face_encodings(
+                small_frame,
+                known_face_locations=face_location_small,
+                model="small"  # 5-point model, faster than 68-point
+            )
         except Exception as e:
             print(f"[FaceModule] Encoding error: {e}")
             return ["Unknown"]

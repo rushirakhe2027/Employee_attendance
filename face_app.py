@@ -158,9 +158,8 @@ class EmployeeAttendanceApp:
                     small_stream_frame = cv2.resize(frame, (320, 240))
                     self.write_frame_to_disk(small_stream_frame)
 
-                # --- STEP 1: Only process AI every 5th frame ---
-                # Haar runs fast. dlib runs only when Haar confirms a face.
-                if frame_count % 5 != 0:
+                # dlib needs time on Pi 1 — skip 15 frames between each AI call
+                if frame_count % 15 != 0:
                     continue
 
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
