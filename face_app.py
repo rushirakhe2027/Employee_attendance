@@ -22,6 +22,18 @@ FACE_DIR        = f"{DATABASE_DIR}/faces"
 def now_ist():
     return datetime.now(IST)
 
+def get_ip():
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 1))
+        IP = s.getsockname()[0]
+    except:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
+
 class EmployeeAttendanceApp:
     def __init__(self):
         os.makedirs(DATABASE_DIR, exist_ok=True)
@@ -41,7 +53,9 @@ class EmployeeAttendanceApp:
 
         self.running          = True
         self.detection_counter = 0
-        self.cooldown_until   = {}  # name -> datetime — prevents re-scan within 30s
+        self.cooldown_until   = {}  # name -> datetime
+        self.ip_address       = get_ip()
+        self.last_lcd_update  = time.time()
 
     # ─── DB Bootstrap ────────────────────────────────────────────────────────
     def _ensure_db(self):
@@ -245,6 +259,12 @@ class EmployeeAttendanceApp:
         frame_count = 0
         try:
             while self.running:
+                # Periodic LCD refresh to show IP
+                if time.time() - self.last_lcd_update > 15:
+                    self.lcd.display("IT SOLUTIONS Pvt", f"IP:{self.ip_address}")
+                    self.last_lcd_update = time.time()
+                    time.sleep(1) # simple pause
+
                 ret, frame = self.camera.read()
                 if not ret:
                     continue
