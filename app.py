@@ -86,12 +86,27 @@ def index():
     stats['absent_today'] = max(0, stats['total_employees'] - stats['present_today'])
 
     # presentation ready dictionary (ensures all keys exist for Jinja)
-    latest_df = df_att.tail(15).iloc[::-1]
-    for col in ['Employee_ID','Name','Date','Time','Status','Type']:
-        if col not in latest_df.columns:
-            latest_df[col] = "N/A"
-            
-    latest = latest_df.to_dict('records')
+    try:
+        latest_df = df_att.tail(15).iloc[::-1].copy()
+        # Fill all empty/NaN values with "N/A"
+        latest_df = latest_df.fillna("N/A")
+        
+        mandatory_keys = ['Employee_ID','Name','Date','Time','Status','Type']
+        for col in mandatory_keys:
+            if col not in latest_df.columns:
+                latest_df[col] = "N/A"
+        
+        latest = latest_df.to_dict('records')
+        
+        # Double check: ensure every record has every key (Jinja insurance)
+        for rec in latest:
+            for key in mandatory_keys:
+                if key not in rec:
+                    rec[key] = "N/A"
+    except Exception as e:
+        print(f"[Web] Data transform error: {e}")
+        latest = []
+
     return render_template('index.html', stats=stats, attendance=latest, today=today)
 
 

@@ -25,10 +25,10 @@ def launch():
     print("="*50 + "\n")
 
     # 1. Start the Flask Dashboard in the background
-    # We use sys.executable to ensure we use the same python version
+    log_file = open("web_system.log", "w")
     web_process = subprocess.Popen([sys.executable, "app.py"], 
-                                   stdout=subprocess.DEVNULL, 
-                                   stderr=subprocess.DEVNULL)
+                                   stdout=log_file, 
+                                   stderr=log_file)
     
     time.sleep(2) # Give it a moment to bind to the port
 

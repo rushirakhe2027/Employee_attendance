@@ -39,7 +39,7 @@
             </div>
             <div style="display: flex; align-items: center; gap: 0.75rem;">
                 <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: #eee; border-radius: 0.25rem; font-weight: 600; color: #555;">{{ record.Type }}</span>
-                <span class="status-pill status-{{ record.Status.lower().replace(' ', '-') }}">{{ record.Status }}</span>
+                <span class="status-pill status-{{ (record.Status|string).lower().replace(' ', '-') }}">{{ record.Status }}</span>
             </div>
         </div>
         {% else %}
