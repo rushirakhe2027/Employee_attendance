@@ -228,7 +228,6 @@ class EmployeeAttendanceApp:
                 bbox = self.face_module.just_detect(rgb_frame)
                 if bbox:
                     self.detection_counter += 1
-                    print(f" [SCAN] Face ({self.detection_counter}/3)", end="\r")
                 else:
                     self.detection_counter = 0
                     continue

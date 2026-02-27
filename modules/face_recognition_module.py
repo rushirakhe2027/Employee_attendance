@@ -237,7 +237,7 @@ class FaceRecognitionModule:
         best_name = min(person_best, key=person_best.get)
         best_distance = person_best[best_name]
 
-        print(f" [dlib] Best match: {best_name} | Distance: {best_distance:.3f} | Threshold: {self.TOLERANCE}")
+        # Match result is silent — terminal only shows confirmed name or Unknown menu
 
         if best_distance <= self.TOLERANCE:
             return [best_name]
