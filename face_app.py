@@ -40,11 +40,6 @@ class EmployeeAttendanceApp:
         self.running = True
         self.last_record = {} # name -> (last_type, last_date)
         
-        # Proper Recognition Buffer
-        # 5 consistent votes required for "Professional" accuracy
-        self.recognition_buffer = {} # name -> count
-        self.buffer_threshold = 5
-        
         self.connect_to_server()
 
     def connect_to_server(self):
@@ -158,8 +153,8 @@ class EmployeeAttendanceApp:
                     small_stream_frame = cv2.resize(frame, (320, 240))
                     self.write_frame_to_disk(small_stream_frame)
 
-                # Professional Accuracy: Process every 5th frame for 160x160 detail
-                if frame_count % 5 != 0:
+                # Professional Mode: Processing every 20th frame to allow Dlib calculation
+                if frame_count % 20 != 0:
                     continue
                 
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -169,32 +164,19 @@ class EmployeeAttendanceApp:
                 faces = self.face_module.haar_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
                 
                 if len(faces) > 0:
-                    # self.lcd.display("Face Detected", "Verifying...") # Optional: Hide this to make it feel smoother
+                    self.lcd.display("IT SOLUTIONS Pvt", "Analyzing...")
                     names = self.face_module.detect_and_recognize(rgb_frame)
                 else:
-                    # Clear buffer if no face seen
-                    self.recognition_buffer = {}
                     continue
                 
                 for name in names:
                     if name == "Unknown":
-                        # ... already handled below ...
-                        pass
+                        pass 
                     else:
-                        # VOTE for this person
-                        self.recognition_buffer[name] = self.recognition_buffer.get(name, 0) + 1
-                        
-                        if self.recognition_buffer[name] >= self.buffer_threshold:
-                            # 5 Consistent Frames FOUND!
-                            if self.mark_attendance(name):
-                                self.recognition_buffer = {} # Reset
-                                time.sleep(2)
-                                self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
-                            continue
-                        else:
-                            # Still analyzing
-                            print(f" [BUFFER] {name} identified {self.recognition_buffer[name]}/{self.buffer_threshold}")
-                            continue
+                        # Dlib is highly accurate - mark attendance immediately
+                        if self.mark_attendance(name):
+                            self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
+                        continue
 
                     if name == "Unknown":
                         self.buzzer.beep_unknown()
@@ -221,42 +203,30 @@ class EmployeeAttendanceApp:
                             new_dept = "IT SOLUTIONS" # Fixed as requested
                             
                             if new_name and new_id:
-                                # Save current frame as first photo profile
-                                temp_photo = os.path.join(DATABASE_DIR, f"temp_reg.jpg")
-                                cv2.imwrite(temp_photo, frame) 
+                                # Save first photo for AI encoding
+                                temp_photo = os.path.join(DATABASE_DIR, f"cap_{new_id}.jpg")
+                                cv2.imwrite(temp_photo, frame)
                                 
-                                self.lcd.display("Stay Still...", "Syncing (1/3)")
-                                self.face_module.register_new_face(f"{new_name}_1", temp_photo)
+                                self.lcd.display("Stay Still...", "Syncing AI...")
+                                print(" [AI] Generating 128D Face Map (Please wait ~20s)...")
+                                success, msg = self.face_module.register_new_face(new_name, temp_photo)
                                 
-                                time.sleep(0.5)
-                                ret, f2 = self.camera.read()
-                                if ret:
-                                    self.lcd.display("Stay Still...", "Syncing (2/3)")
-                                    p2 = os.path.join(DATABASE_DIR, f"temp_2.jpg")
-                                    cv2.imwrite(p2, f2)
-                                    self.face_module.register_new_face(f"{new_name}_2", p2)
-                                    os.remove(p2)
+                                if success:
+                                    # Update CSV
+                                    df = pd.read_csv(EMPLOYEES_FILE)
+                                    new_emp = pd.DataFrame([[new_id, new_name, new_phone, new_dept, datetime.now(IST).strftime("%Y-%m-%d")]], 
+                                                           columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date'])
+                                    df = pd.concat([df, new_emp], ignore_index=True)
+                                    df.to_csv(EMPLOYEES_FILE, index=False)
                                     
-                                time.sleep(0.5)
-                                ret, f3 = self.camera.read()
-                                if ret:
-                                    self.lcd.display("Stay Still...", "Syncing (3/3)")
-                                    p3 = os.path.join(DATABASE_DIR, f"temp_3.jpg")
-                                    cv2.imwrite(p3, f3)
-                                    self.face_module.register_new_face(f"{new_name}_3", p3)
-                                    os.remove(p3)
+                                    self.lcd.display("Sync Success!", new_name)
+                                    print(f"Successfully registered {new_name}")
+                                    time.sleep(2)
+                                else:
+                                    self.lcd.display("Sync Failed", "Try again")
+                                    print(f"Error during AI sync: {msg}")
+                                    time.sleep(2)
 
-                                # Update CSV
-                                df = pd.read_csv(EMPLOYEES_FILE)
-                                new_emp = pd.DataFrame([[new_id, new_name, new_phone, new_dept, datetime.now(IST).strftime("%Y-%m-%d")]], 
-                                                       columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date'])
-                                df = pd.concat([df, new_emp], ignore_index=True)
-                                df.to_csv(EMPLOYEES_FILE, index=False)
-                                
-                                self.lcd.display("Reg Success!", new_name)
-                                print(f"Successfully registered {new_name} with 3D profile")
-                                time.sleep(2)
-                                
                                 if os.path.exists(temp_photo):
                                     os.remove(temp_photo)
                             else:

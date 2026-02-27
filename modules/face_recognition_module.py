@@ -2,26 +2,16 @@ import cv2
 import numpy as np
 import os
 import pandas as pd
+import time
 
 class FaceRecognitionModule:
-    def __init__(self, face_dir="database/faces", threshold=245):
+    def __init__(self, face_dir="database/faces", tolerance=0.5):
         self.face_dir = face_dir
-        self.threshold = threshold 
+        self.tolerance = tolerance # 0.5 is strict, 0.6 is default
+        self.known_encodings = []
+        self.known_names = []
         
-        # Advanced Contrast Enhancement (CLAHE)
-        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        
-        # LBPH Configuration: 
-        # radius=1, neighbors=8 
-        # grid_x=12, grid_y=12 (Professional level detail)
-        try:
-            self.recognizer = cv2.face.LBPHFaceRecognizer_create(radius=1, neighbors=8, grid_x=12, grid_y=12)
-        except AttributeError:
-            # Fallback if opencv-contrib is not installed
-            print("LBPH not found, falling back to basic detector only.")
-            self.recognizer = None
-            
-        # Robust Haar Cascade path detection for Pi 1
+        # Fast Haar Cascade for Detection
         cascade_path = None
         if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
             cascade_path = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
@@ -32,108 +22,96 @@ class FaceRecognitionModule:
             'haarcascade_frontalface_default.xml'
         ]
         
-        if cascade_path is None or not os.path.exists(cascade_path):
-            for path in fallback_paths:
+        for path in fallback_paths:
+            if cascade_path is None or not os.path.exists(cascade_path):
                 if os.path.exists(path):
                     cascade_path = path
                     break
                     
-        if cascade_path is None:
-            print("Warning: Haar cascade file not found. System may fail.")
-            self.haar_detector = None
-        else:
-            # minNeighbors=12 is very strict to stop false face detections
-            self.haar_detector = cv2.CascadeClassifier(cascade_path)
-            self.detect_params = {"scaleFactor": 1.1, "minNeighbors": 12, "minSize": (60, 60)}
+        self.haar_detector = cv2.CascadeClassifier(cascade_path)
+        self.detect_params = {"scaleFactor": 1.1, "minNeighbors": 10, "minSize": (60, 60)}
         
-        self.label_map = {} # ID -> Name
+        # Load known faces from disk
         self.load_known_faces()
 
     def load_known_faces(self):
-        """Trains the fast LBPH model from existing photos on the fly."""
-        if self.recognizer is None: return
+        """Loads .npy encoding files from disk (created during registration)."""
+        print(" [AI] Loading Professional Encodings...")
+        self.known_encodings = []
+        self.known_names = []
         
-        faces = []
-        labels = []
-        label_id = 0
-        
-        print("Feeding AI with known employees...")
         if not os.path.exists(self.face_dir):
             os.makedirs(self.face_dir)
             
-        # Sort filenames to group multiple images of the same person
-        # Pattern: "Name.jpg", "Name_2.jpg", "Name_3.jpg" etc.
-        for filename in sorted(os.listdir(self.face_dir)):
-            if filename.lower().endswith(('.jpg', '.png')):
-                # Extract clean name (remove _1, _2 suffixes)
-                raw_name = os.path.splitext(filename)[0]
-                name = raw_name.split('_')[0].strip()
-                
-                path = os.path.join(self.face_dir, filename)
-                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-                if img is None: continue
-                
-                # Use Advanced CLAHE instead of simple equalization
-                img = self.clahe.apply(img)
-                img = cv2.resize(img, (160, 160)) # Increased from 100 for better detail
-                
-                faces.append(img)
-                labels.append(label_id)
-                self.label_map[label_id] = name
-                label_id += 1
-                
-        if len(faces) > 0:
-            self.recognizer.train(faces, np.array(labels))
-            print(f"Total Database Size: {len(faces)} employees")
-        else:
-            print("Total Database Size: 0 employees")
+        for filename in os.listdir(self.face_dir):
+            if filename.endswith('.npy'):
+                try:
+                    encoding = np.load(os.path.join(self.face_dir, filename))
+                    # Group names (Handle Multi-Sync profiles)
+                    name = filename.split('.')[0].split('_')[1] # Expecting "enc_Name_1.npy"
+                    self.known_encodings.append(encoding)
+                    self.known_names.append(name)
+                except:
+                    continue
+        print(f" [AI] Database Ready: {len(set(self.known_names))} Unique Employees Loaded.")
 
     def register_new_face(self, name, image_path):
-        """Saves a grayscale face photo and re-trains the model instantly."""
+        """Generates a 128D Deep Learning encoding and saves it as .npy for speed."""
+        import face_recognition # Lazy import to save RAM
         try:
-            img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-            img = self.clahe.apply(img) # Normalize lighting
-            face = cv2.resize(img, (160, 160))
+            img = face_recognition.load_image_file(image_path)
+            # Detect face specifically for encoding
+            locations = face_recognition.face_locations(img, model="hog")
+            if not locations:
+                return False, "No face found in photo"
+                
+            # Create encoding (This is the slow part, about 20s on Pi 1)
+            encodings = face_recognition.face_encodings(img, known_face_locations=locations, model="small")
             
-            save_path = os.path.join(self.face_dir, f"{name}.jpg")
-            cv2.imwrite(save_path, face)
-            
-            # Re-load everything so the AI knows the new face instantly
-            self.load_known_faces()
-            return True, "Registered!"
+            if encodings:
+                # Save as .npy so the Pi NEVER has to re-calculate this again
+                save_path = os.path.join(self.face_dir, f"enc_{name}.npy")
+                np.save(save_path, encodings[0])
+                self.load_known_faces()
+                return True, "Registered!"
+            return False, "Encoding failed"
         except Exception as e:
             return False, str(e)
 
     def detect_and_recognize(self, frame_rgb):
+        """Hybrid approach: Fast Haar Detection -> Slow Dlib Matching (Every few seconds)"""
+        import face_recognition # Lazy import
+        
         gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
-        # Higher minNeighbors (8) prevents false detections
         faces = self.haar_detector.detectMultiScale(gray, **self.detect_params)
         
         recognized_names = []
         for (x, y, w, h) in faces:
-            if self.recognizer is not None and len(self.label_map) > 0:
-                # Add 10% padding to include ears/forehead (improves LBPH match)
-                pad_w = int(w * 0.1)
-                pad_h = int(h * 0.1)
-                y1 = max(0, y - pad_h)
-                y2 = min(gray.shape[0], y + h + pad_h)
-                x1 = max(0, x - pad_w)
-                x2 = min(gray.shape[1], x + w + pad_w)
-                
-                roi_gray = gray[y1:y2, x1:x2]
-                
-                # Advanced CLAHE Filtering
-                roi_gray = self.clahe.apply(roi_gray)
-                roi_gray = cv2.resize(roi_gray, (160, 160))
-                
-                label_id, confidence = self.recognizer.predict(roi_gray)
-                print(f" [AI] Decoded Face: {self.label_map.get(label_id, '???')} (Score: {int(confidence)} / Limit: {self.threshold})")
-                
-                # Confidence in LBPH is distance (Lower is better)
-                if confidence < self.threshold:
-                    recognized_names.append(self.label_map[label_id])
-                else:
-                    recognized_names.append("Unknown")
-            else:
-                recognized_names.append("Unknown")
+            # Add padding for better dlib alignment
+            pad = 20
+            y1, y2 = max(0, y-pad), min(frame_rgb.shape[0], y+h+pad)
+            x1, x2 = max(0, x-pad), min(frame_rgb.shape[1], x+w+pad)
+            face_crop = frame_rgb[y1:y2, x1:x2]
+            
+            # This is the 'Proper' 128D Math (takes ~15 seconds on Pi 1)
+            # We only do it once a face is detected by Haar
+            # Passing current crop locations to skip Dlib's internal HOG detection
+            top, right, bottom, left = pad, face_crop.shape[1]-pad, face_crop.shape[0]-pad, pad
+            encodings = face_recognition.face_encodings(face_crop, known_face_locations=[(top, right, bottom, left)], model="small")
+            
+            if encodings and self.known_encodings:
+                matches = face_recognition.compare_faces(self.known_encodings, encodings[0], tolerance=self.tolerance)
+                if True in matches:
+                    # Voting logic: find best match
+                    face_distances = face_recognition.face_distance(self.known_encodings, encodings[0])
+                    best_match_index = np.argmin(face_distances)
+                    if matches[best_match_index]:
+                        name = self.known_names[best_match_index]
+                        score = int((1 - face_distances[best_match_index]) * 100)
+                        print(f" [DEEP AI] Match: {name} (Confidence: {score}%)")
+                        recognized_names.append(name)
+                        continue
+            
+            recognized_names.append("Unknown")
+            
         return recognized_names
