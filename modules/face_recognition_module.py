@@ -4,17 +4,18 @@ import os
 import pandas as pd
 
 class FaceRecognitionModule:
-    def __init__(self, face_dir="database/faces", threshold=185):
+    def __init__(self, face_dir="database/faces", threshold=175):
         self.face_dir = face_dir
         self.threshold = threshold 
         
-        # Advanced Contrast Enhancement (CLAHE) - Essential for professional face recognition
+        # Advanced Contrast Enhancement (CLAHE)
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         
-        # Use LBPH - The "Classic" and FASTEST method for Pi 1 hardware
-        # This module doesn't need any 100MB files to load!
+        # LBPH Configuration: 
+        # radius=1, neighbors=8 (default)
+        # grid_x=10, grid_y=10 (Enhanced from 8x8 for better accuracy on Pi 1)
         try:
-            self.recognizer = cv2.face.LBPHFaceRecognizer_create()
+            self.recognizer = cv2.face.LBPHFaceRecognizer_create(radius=1, neighbors=8, grid_x=10, grid_y=10)
         except AttributeError:
             # Fallback if opencv-contrib is not installed
             print("LBPH not found, falling back to basic detector only.")
@@ -111,7 +112,16 @@ class FaceRecognitionModule:
         recognized_names = []
         for (x, y, w, h) in faces:
             if self.recognizer is not None and len(self.label_map) > 0:
-                roi_gray = gray[y:y+h, x:x+w]
+                # Add 10% padding to include ears/forehead (improves LBPH match)
+                pad_w = int(w * 0.1)
+                pad_h = int(h * 0.1)
+                y1 = max(0, y - pad_h)
+                y2 = min(gray.shape[0], y + h + pad_h)
+                x1 = max(0, x - pad_w)
+                x2 = min(gray.shape[1], x + w + pad_w)
+                
+                roi_gray = gray[y1:y2, x1:x2]
+                
                 # Advanced CLAHE Filtering
                 roi_gray = self.clahe.apply(roi_gray)
                 roi_gray = cv2.resize(roi_gray, (100, 100))

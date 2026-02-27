@@ -40,6 +40,11 @@ class EmployeeAttendanceApp:
         self.running = True
         self.last_record = {} # name -> (last_type, last_date)
         
+        # Proper Recognition Buffer
+        # To be accurate, we need 3 consistent "votes" before marking attendance
+        self.recognition_buffer = {} # name -> count
+        self.buffer_threshold = 3
+        
         self.connect_to_server()
 
     def connect_to_server(self):
@@ -165,12 +170,32 @@ class EmployeeAttendanceApp:
                 faces = self.face_module.haar_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
                 
                 if len(faces) > 0:
-                    self.lcd.display("Face Detected", "Verifying...")
+                    # self.lcd.display("Face Detected", "Verifying...") # Optional: Hide this to make it feel smoother
                     names = self.face_module.detect_and_recognize(rgb_frame)
                 else:
+                    # Clear buffer if no face seen
+                    self.recognition_buffer = {}
                     continue
                 
                 for name in names:
+                    if name == "Unknown":
+                        # ... already handled below ...
+                        pass
+                    else:
+                        # VOTE for this person
+                        self.recognition_buffer[name] = self.recognition_buffer.get(name, 0) + 1
+                        
+                        if self.recognition_buffer[name] >= self.buffer_threshold:
+                            # 3 Consistent Frames FOUND!
+                            if self.mark_attendance(name):
+                                self.recognition_buffer = {} # Reset
+                                time.sleep(2)
+                                self.lcd.display("System Ready", "Scan Face")
+                            continue
+                        else:
+                            # Still analyzing
+                            print(f" [BUFFER] {name} identified {self.recognition_buffer[name]}/{self.buffer_threshold}")
+                            continue
 
                     if name == "Unknown":
                         self.buzzer.beep_unknown()
@@ -198,28 +223,37 @@ class EmployeeAttendanceApp:
                             new_phone = input("Enter Phone Number: ").strip()
                             
                             if new_name and new_id:
-                                # Save current frame as photo
-                                temp_photo = os.path.join(DATABASE_DIR, f"temp_reg.jpg")
-                                cv2.imwrite(temp_photo, frame) # frame is BGR
+                                self.lcd.display("Stay Still...", "Syncing (1/3)")
+                                self.face_module.register_new_face(f"{new_name}_1", temp_photo)
                                 
-                                self.lcd.display("Processing...", "Please wait")
-                                success, msg = self.face_module.register_new_face(new_name, temp_photo)
-                                
-                                if success:
-                                    # Update CSV
-                                    df = pd.read_csv(EMPLOYEES_FILE)
-                                    new_emp = pd.DataFrame([[new_id, new_name, new_phone, new_dept, datetime.now(IST).strftime("%Y-%m-%d")]], 
-                                                           columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date'])
-                                    df = pd.concat([df, new_emp], ignore_index=True)
-                                    df.to_csv(EMPLOYEES_FILE, index=False)
+                                time.sleep(0.5)
+                                ret, f2 = self.camera.read()
+                                if ret:
+                                    self.lcd.display("Stay Still...", "Syncing (2/3)")
+                                    p2 = os.path.join(DATABASE_DIR, f"temp_2.jpg")
+                                    cv2.imwrite(p2, f2)
+                                    self.face_module.register_new_face(f"{new_name}_2", p2)
+                                    os.remove(p2)
                                     
-                                    self.lcd.display("Reg Success!", new_name)
-                                    print(f"Successfully registered {new_name}")
-                                    time.sleep(2)
-                                else:
-                                    self.lcd.display("Reg Failed", "Try again")
-                                    print(f"Error during registration: {msg}")
-                                    time.sleep(2)
+                                time.sleep(0.5)
+                                ret, f3 = self.camera.read()
+                                if ret:
+                                    self.lcd.display("Stay Still...", "Syncing (3/3)")
+                                    p3 = os.path.join(DATABASE_DIR, f"temp_3.jpg")
+                                    cv2.imwrite(p3, f3)
+                                    self.face_module.register_new_face(f"{new_name}_3", p3)
+                                    os.remove(p3)
+
+                                # Update CSV
+                                df = pd.read_csv(EMPLOYEES_FILE)
+                                new_emp = pd.DataFrame([[new_id, new_name, new_phone, new_dept, datetime.now(IST).strftime("%Y-%m-%d")]], 
+                                                       columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date'])
+                                df = pd.concat([df, new_emp], ignore_index=True)
+                                df.to_csv(EMPLOYEES_FILE, index=False)
+                                
+                                self.lcd.display("Reg Success!", new_name)
+                                print(f"Successfully registered {new_name} with 3D profile")
+                                time.sleep(2)
                                 
                                 if os.path.exists(temp_photo):
                                     os.remove(temp_photo)
