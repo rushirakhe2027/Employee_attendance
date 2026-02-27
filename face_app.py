@@ -286,6 +286,8 @@ class EmployeeAttendanceApp:
                 # ── STEP 1: Fast Haar pre-detect ──────────────────────────
                 bbox = self.face_module.just_detect(rgb_frame)
                 if bbox:
+                    if self.detection_counter == 0:
+                        self.lcd.display("Status: Scanning", "Please wait...")
                     self.detection_counter += 1
                 else:
                     self.detection_counter = 0

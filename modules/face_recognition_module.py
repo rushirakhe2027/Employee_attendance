@@ -208,7 +208,8 @@ class FaceRecognitionModule:
             encodings = face_recognition.face_encodings(
                 small_frame,
                 known_face_locations=face_location_small,
-                model="small"
+                num_jitters=1, # Add 1-shot jitter for stability
+                model="large"  # High precision
             )
         except Exception as e:
             print(f"[FaceModule] Encoding error: {e}")
