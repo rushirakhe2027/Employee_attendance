@@ -223,6 +223,10 @@ class EmployeeAttendanceApp:
                             new_phone = input("Enter Phone Number: ").strip()
                             
                             if new_name and new_id:
+                                # Save current frame as first photo profile
+                                temp_photo = os.path.join(DATABASE_DIR, f"temp_reg.jpg")
+                                cv2.imwrite(temp_photo, frame) 
+                                
                                 self.lcd.display("Stay Still...", "Syncing (1/3)")
                                 self.face_module.register_new_face(f"{new_name}_1", temp_photo)
                                 

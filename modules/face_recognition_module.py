@@ -4,7 +4,7 @@ import os
 import pandas as pd
 
 class FaceRecognitionModule:
-    def __init__(self, face_dir="database/faces", threshold=175):
+    def __init__(self, face_dir="database/faces", threshold=255):
         self.face_dir = face_dir
         self.threshold = threshold 
         
