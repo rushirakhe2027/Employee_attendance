@@ -45,12 +45,30 @@ class EmployeeAttendanceApp:
 
     # ─── DB Bootstrap ────────────────────────────────────────────────────────
     def _ensure_db(self):
+        # 1. Employees DB
         if not os.path.exists(EMPLOYEES_FILE):
             pd.DataFrame(columns=['Employee_ID','Name','Phone','Department','Join_Date']
                          ).to_csv(EMPLOYEES_FILE, index=False)
+        
+        # 2. Attendance DB
         if not os.path.exists(ATTENDANCE_FILE):
             pd.DataFrame(columns=['Employee_ID','Name','Date','Time','Status','Type']
                          ).to_csv(ATTENDANCE_FILE, index=False)
+        else:
+            # Migration: Ensure existing file has mandatory columns
+            try:
+                df = pd.read_csv(ATTENDANCE_FILE)
+                df.columns = [str(c).strip() for c in df.columns]
+                changed = False
+                for col in ['Employee_ID','Name','Date','Time','Status','Type']:
+                    if col not in df.columns:
+                        df[col] = "Legacy"
+                        changed = True
+                if changed:
+                    df.to_csv(ATTENDANCE_FILE, index=False)
+                    print("[DB] Migrated attendance.csv to include new columns.")
+            except Exception as e:
+                print(f"[DB] Migration error: {e}")
 
     # ─── Core Attendance Logic ────────────────────────────────────────────────
     def _get_todays_records(self, name):
@@ -58,6 +76,12 @@ class EmployeeAttendanceApp:
         today = now_ist().strftime("%Y-%m-%d")
         try:
             df = pd.read_csv(ATTENDANCE_FILE)
+            df.columns = [str(c).strip() for c in df.columns]
+            
+            # Defensive check for columns
+            if 'Name' not in df.columns or 'Date' not in df.columns:
+                return pd.DataFrame()
+                
             return df[(df['Name'] == name) & (df['Date'] == today)]
         except Exception:
             return pd.DataFrame()
@@ -86,8 +110,18 @@ class EmployeeAttendanceApp:
 
         # What records exist for today?
         today_df   = self._get_todays_records(name)
-        has_in     = not today_df[today_df['Type'] == 'IN'].empty
-        has_out    = not today_df[today_df['Type'] == 'OUT'].empty
+        
+        # Robust column check
+        has_in = False
+        has_out = False
+        
+        if not today_df.empty and 'Type' in today_df.columns:
+            has_in  = not today_df[today_df['Type'] == 'IN'].empty
+            has_out = not today_df[today_df['Type'] == 'OUT'].empty
+        elif not today_df.empty:
+            # Fallback for very old formats: assume first scan today is IN
+            has_in = True 
+
 
         # ── Decision Tree ────────────────────────────────────────────────────
         if has_out:
