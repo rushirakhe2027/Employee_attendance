@@ -118,13 +118,33 @@ def employees():
         df_emp = pd.read_csv(EMPLOYEES_FILE)
         df_emp.columns = [str(c).strip() for c in df_emp.columns]
     except:
-        df_emp = pd.DataFrame(columns=['Employee_ID','Name'])
+        df_emp = pd.DataFrame(columns=['Employee_ID','Name','Phone','Department','Join_Date'])
         
     try:
         df_att = pd.read_csv(ATTENDANCE_FILE)
         df_att.columns = [str(c).strip() for c in df_att.columns]
     except:
         df_att = pd.DataFrame(columns=['Employee_ID','Date','Type'])
+
+    # Sync: If a face file exists but is NOT in employees.csv, add a placeholder
+    # This fixes the "detects two faces but shows one" issue
+    face_names = [os.path.splitext(f)[0] for f in os.listdir(FACE_DIR) if f.endswith('.npy')]
+    known_names = df_emp['Name'].tolist() if 'Name' in df_emp.columns else []
+    
+    missing_added = False
+    for fn in face_names:
+        # Check if name is already known (handle case-insensitive or multi-sample suffixes)
+        clean_name = fn.rsplit('_', 1)[0] if fn[-1].isdigit() else fn
+        if clean_name not in known_names:
+            new_id = f"REG-{len(df_emp)+100}"
+            new_row = pd.DataFrame([[new_id, clean_name, "N/A", "Unknown", "Today"]], 
+                                   columns=['Employee_ID','Name','Phone','Department','Join_Date'])
+            df_emp = pd.concat([df_emp, new_row], ignore_index=True)
+            known_names.append(clean_name)
+            missing_added = True
+    
+    if missing_added:
+        df_emp.to_csv(EMPLOYEES_FILE, index=False)
 
     today = now_ist().strftime("%Y-%m-%d")
     emp_list = df_emp.to_dict('records')
@@ -138,8 +158,11 @@ def employees():
             (df_att['Date'] == today)
         ] if 'Employee_ID' in df_att.columns and 'Date' in df_att.columns else pd.DataFrame()
         
-        has_in  = not emp_today[emp_today['Type'] == 'IN'].empty if 'Type' in emp_today.columns else False
-        has_out = not emp_today[emp_today['Type'] == 'OUT'].empty if 'Type' in emp_today.columns else False
+        has_in = False
+        has_out = False
+        if not emp_today.empty and 'Type' in emp_today.columns:
+            has_in  = not emp_today[emp_today['Type'] == 'IN'].empty
+            has_out = not emp_today[emp_today['Type'] == 'OUT'].empty
         
         emp['today_status'] = "Checked Out" if has_out else "Present" if has_in else "Absent"
         emp['has_face'] = os.path.exists(os.path.join(FACE_DIR, f"{nm}.npy"))
@@ -192,9 +215,19 @@ def employee_detail(emp_id):
 @app.route('/attendance')
 def attendance():
     ensure_db()
-    date_filter = request.args.get('date', '')
-    df_att = pd.read_csv(ATTENDANCE_FILE)
+    try:
+        df_att = pd.read_csv(ATTENDANCE_FILE)
+        df_att = df_att.fillna("N/A")
+        df_att.columns = [str(c).strip() for c in df_att.columns]
+        
+        # Ensure all columns exist for the template
+        for col in ['Employee_ID','Name','Date','Time','Status','Type']:
+            if col not in df_att.columns:
+                df_att[col] = "N/A"
+    except:
+        df_att = pd.DataFrame(columns=['Employee_ID','Name','Date','Time','Status','Type'])
 
+    date_filter = request.args.get('date', '')
     if date_filter:
         df_att = df_att[df_att['Date'] == date_filter]
 
@@ -208,20 +241,32 @@ def attendance():
 @app.route('/delete_employee/<emp_id>')
 def delete_employee(emp_id):
     ensure_db()
-    df = pd.read_csv(EMPLOYEES_FILE)
-    name_rows = df[df['Employee_ID'].astype(str) == str(emp_id)]
+    # 1. Clean Employees DB
+    df_emp = pd.read_csv(EMPLOYEES_FILE)
+    name_rows = df_emp[df_emp['Employee_ID'].astype(str) == str(emp_id)]
 
     if not name_rows.empty:
         name = name_rows.iloc[0]['Name']
-        # Remove face files
+        # Remove face data
         for ext in ['.npy', '.jpg']:
             fp = os.path.join(FACE_DIR, f"{name}{ext}")
             if os.path.exists(fp):
                 os.remove(fp)
+        
+        # 2. ALSO clean Attendance DB (Combined data integrity)
+        try:
+            df_att = pd.read_csv(ATTENDANCE_FILE)
+            # Filter OUT this employee from history
+            df_att = df_att[df_att['Employee_ID'].astype(str) != str(emp_id)]
+            df_att.to_csv(ATTENDANCE_FILE, index=False)
+        except:
+            pass
 
-    df = df[df['Employee_ID'].astype(str) != str(emp_id)]
-    df.to_csv(EMPLOYEES_FILE, index=False)
-    flash("Employee and face data deleted.", "info")
+    # Finish cleaning Employees DB
+    df_emp = df_emp[df_emp['Employee_ID'].astype(str) != str(emp_id)]
+    df_emp.to_csv(EMPLOYEES_FILE, index=False)
+    
+    flash("Employee and all their attendance history has been erased.", "info")
     return redirect(url_for('employees'))
 
 
