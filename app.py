@@ -1,196 +1,167 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, flash, Response
-from flask_socketio import SocketIO, emit
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import pandas as pd
 import os
-import cv2
-import requests
-import json
 from datetime import datetime
-import time
 import pytz
-from modules.face_recognition_module import FaceRecognitionModule
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.secret_key = "itsolpvtltd2024"
 
-IST = pytz.timezone('Asia/Kolkata')
-
-DATABASE_DIR = "database"
+IST            = pytz.timezone('Asia/Kolkata')
+DATABASE_DIR   = "database"
 EMPLOYEES_FILE = f"{DATABASE_DIR}/employees.csv"
 ATTENDANCE_FILE = f"{DATABASE_DIR}/attendance.csv"
-FACES_DIR = f"{DATABASE_DIR}/faces"
-WEBHOOK_URL = os.environ.get("ATTENDANCE_WEBHOOK_URL") # Optional environment variable
+FACE_DIR       = f"{DATABASE_DIR}/faces"
 
-# Global frame for video streaming
-video_frame = None
-face_reg_module = FaceRecognitionModule() # Initialize for registration
+def now_ist():
+    return datetime.now(IST)
 
-IST = pytz.timezone('Asia/Kolkata')
+def ensure_db():
+    os.makedirs(DATABASE_DIR, exist_ok=True)
+    os.makedirs(FACE_DIR, exist_ok=True)
+    if not os.path.exists(EMPLOYEES_FILE):
+        pd.DataFrame(columns=['Employee_ID','Name','Phone','Department','Join_Date']
+                     ).to_csv(EMPLOYEES_FILE, index=False)
+    if not os.path.exists(ATTENDANCE_FILE):
+        pd.DataFrame(columns=['Employee_ID','Name','Date','Time','Status','Type']
+                     ).to_csv(ATTENDANCE_FILE, index=False)
 
 @app.context_processor
 def inject_now():
-    return {'datetime': datetime, 'now': datetime.now(IST)}
+    return {'datetime': datetime, 'now': now_ist()}
 
-def ensure_db():
-    if not os.path.exists(DATABASE_DIR):
-        os.makedirs(DATABASE_DIR)
-    if not os.path.exists(FACES_DIR):
-        os.makedirs(FACES_DIR)
-    if not os.path.exists(EMPLOYEES_FILE):
-        pd.DataFrame(columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date']).to_csv(EMPLOYEES_FILE, index=False)
-    if not os.path.exists(ATTENDANCE_FILE):
-        pd.DataFrame(columns=['Employee_ID', 'Name', 'Date', 'Time', 'Status']).to_csv(ATTENDANCE_FILE, index=False)
-
-def send_webhook(data):
-    """Optional webhook for external integration"""
-    if WEBHOOK_URL:
-        try:
-            requests.post(WEBHOOK_URL, json=data, timeout=2)
-        except Exception as e:
-            print(f"Webhook error: {e}")
-
+# ─── Dashboard ───────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
     ensure_db()
-    df_att = pd.read_csv(ATTENDANCE_FILE)
-    df_emp = pd.read_csv(EMPLOYEES_FILE)
-    
-    today = datetime.now(IST).strftime("%Y-%m-%d")
+    df_att  = pd.read_csv(ATTENDANCE_FILE)
+    df_emp  = pd.read_csv(EMPLOYEES_FILE)
+    today   = now_ist().strftime("%Y-%m-%d")
     df_today = df_att[df_att['Date'] == today]
-    
+
+    # unique employees present today (have an IN record)
+    present_ids = df_today[df_today['Type'] == 'IN']['Employee_ID'].unique()
+
     stats = {
-        'total_employees': len(df_emp),
-        'total_attendance': len(df_att),
-        'late_today': len(df_today[df_today['Status'] == 'Late Arrival']),
+        'total_employees'   : len(df_emp),
+        'present_today'     : len(present_ids),
+        'late_today'        : len(df_today[df_today['Status'] == 'Late Arrived']),
         'early_leaving_today': len(df_today[df_today['Status'] == 'Early Leaving']),
-        'present_today': len(df_today[df_today['Status'].isin(['On-Time', 'Late Arrival'])])
+        'absent_today'      : max(0, len(df_emp) - len(present_ids)),
     }
 
-    
-    latest_attendance = df_att.tail(10).iloc[::-1].to_dict('records')
-    return render_template('index.html', stats=stats, attendance=latest_attendance)
+    latest = df_att.tail(15).iloc[::-1].to_dict('records')
+    return render_template('index.html', stats=stats, attendance=latest, today=today)
 
-@app.route('/employees', methods=['GET', 'POST'])
+
+# ─── All Employees ───────────────────────────────────────────────────────────
+@app.route('/employees')
 def employees():
     ensure_db()
-    if request.method == 'POST':
-        emp_id = request.form.get('emp_id')
-        name = request.form.get('name')
-        phone = request.form.get('phone')
-        dept = request.form.get('dept')
-        file = request.files.get('photo')
-        
-        if file and file.filename != '':
-            temp_path = os.path.join(FACES_DIR, f"temp_{name}.jpg")
-            file.save(temp_path)
-            
-            # Use the module to align and extract features
-            success, message = face_reg_module.register_new_face(name, temp_path)
-            
-            # Clean up temp file
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            
-            if not success:
-                flash(f"Error registering face: {message}", "danger")
-                return redirect(url_for('employees'))
-        
-        df = pd.read_csv(EMPLOYEES_FILE)
-        new_emp = pd.DataFrame([[emp_id, name, phone, dept, datetime.now(IST).strftime("%Y-%m-%d")]], 
-                               columns=['Employee_ID', 'Name', 'Phone', 'Department', 'Join_Date'])
-        
-        df = pd.concat([df, new_emp], ignore_index=True)
-        df.to_csv(EMPLOYEES_FILE, index=False)
-        flash(f"Employee {name} registered with face features data!", "success")
-        return redirect(url_for('employees'))
+    df_emp  = pd.read_csv(EMPLOYEES_FILE)
+    df_att  = pd.read_csv(ATTENDANCE_FILE)
+    today   = now_ist().strftime("%Y-%m-%d")
+
+    emp_list = df_emp.to_dict('records')
+    # Annotate with today's status
+    for emp in emp_list:
+        emp_today = df_att[
+            (df_att['Employee_ID'].astype(str) == str(emp['Employee_ID'])) &
+            (df_att['Date'] == today)
+        ]
+        has_in  = not emp_today[emp_today['Type'] == 'IN'].empty
+        has_out = not emp_today[emp_today['Type'] == 'OUT'].empty
+        emp['today_status'] = (
+            "Checked Out" if has_out else
+            "Present"     if has_in  else
+            "Absent"
+        )
+        emp['has_face'] = os.path.exists(os.path.join(FACE_DIR, f"{emp['Name']}.npy"))
+
+    return render_template('employees.html', employees=emp_list)
 
 
-    df_emp = pd.read_csv(EMPLOYEES_FILE)
-    employees_list = df_emp.to_dict('records')
-    return render_template('employees.html', employees=employees_list)
-
-@app.route('/delete_employee/<emp_id>')
-def delete_employee(emp_id):
-    df = pd.read_csv(EMPLOYEES_FILE)
-    df = df[df['Employee_ID'].astype(str) != str(emp_id)]
-    df.to_csv(EMPLOYEES_FILE, index=False)
-    flash("Employee deleted.", "info")
-    return redirect(url_for('employees'))
-
-@app.route('/employee_history/<emp_id>')
-def employee_history(emp_id):
+# ─── Employee Attendance History ─────────────────────────────────────────────
+@app.route('/employee/<emp_id>')
+def employee_detail(emp_id):
     ensure_db()
     df_emp = pd.read_csv(EMPLOYEES_FILE)
     df_att = pd.read_csv(ATTENDANCE_FILE)
-    
-    # Get employee details
-    employee = df_emp[df_emp['Employee_ID'].astype(str) == str(emp_id)].to_dict('records')
-    if not employee:
+
+    emp_rows = df_emp[df_emp['Employee_ID'].astype(str) == str(emp_id)]
+    if emp_rows.empty:
         flash("Employee not found.", "danger")
         return redirect(url_for('employees'))
-    
-    employee = employee[0]
-    
-    # Filter attendance for this employee
-    history = df_att[df_att['Employee_ID'].astype(str) == str(emp_id)].iloc[::-1].to_dict('records')
-    
-    # Calculate stats for this specific employee
+
+    employee = emp_rows.iloc[0].to_dict()
+    history  = df_att[df_att['Employee_ID'].astype(str) == str(emp_id)].iloc[::-1].to_dict('records')
+
+    total_in      = len([h for h in history if h['Type'] == 'IN'])
+    late_count    = len([h for h in history if h['Status'] == 'Late Arrived'])
+    early_count   = len([h for h in history if h['Status'] == 'Early Leaving'])
+    on_time_count = len([h for h in history if h['Status'] == 'On-Time'])
+
     stats = {
-        'total_present': len(history),
-        'late_count': len([h for h in history if h['Status'] == 'Late']),
-        'on_time_count': len([h for h in history if h['Status'] == 'Present'])
+        'total_days'   : total_in,
+        'on_time'      : on_time_count,
+        'late'         : late_count,
+        'early_leaving': early_count,
     }
-    
-    return render_template('employee_history.html', employee=employee, history=history, stats=stats)
+
+    # Photo if available
+    photo_path = f"database/faces/{employee['Name']}.jpg"
+    has_photo  = os.path.exists(photo_path)
+
+    return render_template('employee_history.html',
+                           employee=employee,
+                           history=history,
+                           stats=stats,
+                           has_photo=has_photo)
+
+
+# ─── Full Attendance Log ─────────────────────────────────────────────────────
 @app.route('/attendance')
 def attendance():
     ensure_db()
+    date_filter = request.args.get('date', '')
     df_att = pd.read_csv(ATTENDANCE_FILE)
-    attendance_list = df_att.iloc[::-1].to_dict('records')
-    return render_template('attendance.html', attendance=attendance_list)
 
+    if date_filter:
+        df_att = df_att[df_att['Date'] == date_filter]
+
+    attendance_list = df_att.iloc[::-1].to_dict('records')
+    return render_template('attendance.html',
+                           attendance=attendance_list,
+                           date_filter=date_filter)
+
+
+# ─── Delete Employee ─────────────────────────────────────────────────────────
+@app.route('/delete_employee/<emp_id>')
+def delete_employee(emp_id):
+    ensure_db()
+    df = pd.read_csv(EMPLOYEES_FILE)
+    name_rows = df[df['Employee_ID'].astype(str) == str(emp_id)]
+
+    if not name_rows.empty:
+        name = name_rows.iloc[0]['Name']
+        # Remove face files
+        for ext in ['.npy', '.jpg']:
+            fp = os.path.join(FACE_DIR, f"{name}{ext}")
+            if os.path.exists(fp):
+                os.remove(fp)
+
+    df = df[df['Employee_ID'].astype(str) != str(emp_id)]
+    df.to_csv(EMPLOYEES_FILE, index=False)
+    flash("Employee and face data deleted.", "info")
+    return redirect(url_for('employees'))
+
+
+# ─── Download Attendance CSV ─────────────────────────────────────────────────
 @app.route('/download')
 def download():
     return send_file(ATTENDANCE_FILE, as_attachment=True)
 
-# --- Shared-file based Live Video Stream ---
-# face_app.py writes frames to this temp file; app.py reads and serves them
-LIVE_FRAME_PATH = os.path.join(DATABASE_DIR, "live_frame.jpg")
-
-def generate_frames():
-    """Read frames written by face_app.py and stream as MJPEG."""
-    # Create a simple offline placeholder image
-    offline_img = cv2.imread("static/offline.jpg") if os.path.exists("static/offline.jpg") else None
-    
-    while True:
-        if os.path.exists(LIVE_FRAME_PATH):
-            try:
-                with open(LIVE_FRAME_PATH, 'rb') as f:
-                    frame_bytes = f.read()
-                if frame_bytes:
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-            except Exception:
-                pass
-        elif offline_img is not None:
-            ret, buf = cv2.imencode('.jpg', offline_img)
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
-        time.sleep(0.1)
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-# --- SocketIO Events for face_app.py to push data ---
-@socketio.on('recognition_event')
-def handle_recognition(data):
-    """Called by face_app.py when someone is recognized"""
-    print(f"Real-time update: {data['name']} marked as {data['status']}")
-    emit('new_attendance', data, broadcast=True)
-    send_webhook(data)
 
 if __name__ == '__main__':
-    # Disable debug mode for much faster performance on Pi 1
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
+    ensure_db()
+    app.run(host='0.0.0.0', port=5000, debug=False)
