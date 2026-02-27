@@ -263,7 +263,7 @@ class EmployeeAttendanceApp:
                 if time.time() - self.last_lcd_update > 15:
                     self.lcd.display("IT SOLUTIONS Pvt", f"IP:{self.ip_address}")
                     self.last_lcd_update = time.time()
-                    time.sleep(1) # simple pause
+                    # Removed blocking sleep
 
                 ret, frame = self.camera.read()
                 if not ret:
@@ -272,10 +272,7 @@ class EmployeeAttendanceApp:
                 frame_count += 1
                 frame = cv2.flip(frame, 1)
 
-                # Check every 2 frames (fast Haar check)
-                if frame_count % 2 != 0:
-                    continue
-
+                # Process every frame on Pi 1 since FPS is already low
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
                 # ── STEP 1: Fast Haar pre-detect ──────────────────────────
@@ -286,8 +283,8 @@ class EmployeeAttendanceApp:
                     self.detection_counter = 0
                     continue
 
-                # ── STEP 2: Require 3 consecutive detections ──────────────
-                if self.detection_counter < 3:
+                # ── STEP 2: Require 2 consecutive detections (Faster) ─────
+                if self.detection_counter < 2:
                     continue
 
                 # ── STEP 3: Heavy dlib recognition ────────────────────────

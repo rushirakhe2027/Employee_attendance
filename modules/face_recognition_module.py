@@ -140,8 +140,8 @@ class FaceRecognitionModule:
         
         faces = self.haar_detector.detectMultiScale(
             gray,
-            scaleFactor=1.05,
-            minNeighbors=6,
+            scaleFactor=1.1,   # Faster detection
+            minNeighbors=5,    # More sensitive
             minSize=(30, 30)
         )
 
