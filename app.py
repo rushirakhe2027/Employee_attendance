@@ -34,19 +34,40 @@ def inject_now():
 @app.route('/')
 def index():
     ensure_db()
-    df_att  = pd.read_csv(ATTENDANCE_FILE)
-    df_emp  = pd.read_csv(EMPLOYEES_FILE)
-    today   = now_ist().strftime("%Y-%m-%d")
-    df_today = df_att[df_att['Date'] == today]
+    df_att = pd.read_csv(ATTENDANCE_FILE)
+    df_emp = pd.read_csv(EMPLOYEES_FILE)
+    
+    # Normalize column names (remove whitespace/hidden chars)
+    df_att.columns = [str(c).strip() for c in df_att.columns]
+    
+    today = now_ist().strftime("%Y-%m-%d")
+    
+    # Ensure mandatory columns exist
+    if 'Date' not in df_att.columns:
+        # If Date is missing, we can't show today's stats from the df
+        df_today = pd.DataFrame(columns=df_att.columns)
+    else:
+        df_today = df_att[df_att['Date'] == today]
+    
+    # Support both old and new CSV formats
+    col_status = 'Status' if 'Status' in df_today.columns else None
+    col_type   = 'Type'   if 'Type'   in df_today.columns else None
+    col_id     = 'Employee_ID' if 'Employee_ID' in df_today.columns else None
 
-    # unique employees present today (have an IN record)
-    present_ids = df_today[df_today['Type'] == 'IN']['Employee_ID'].unique()
+    # Handle check-ins (present today)
+    if col_id and col_type:
+        present_ids = df_today[df_today[col_type] == 'IN'][col_id].unique()
+    elif col_id:
+        # Fallback for old format: if they are in the list at all today
+        present_ids = df_today[col_id].unique()
+    else:
+        present_ids = []
 
     stats = {
         'total_employees'   : len(df_emp),
         'present_today'     : len(present_ids),
-        'late_today'        : len(df_today[df_today['Status'] == 'Late Arrived']),
-        'early_leaving_today': len(df_today[df_today['Status'] == 'Early Leaving']),
+        'late_today'        : len(df_today[df_today[col_status] == 'Late Arrived']) if col_status else 0,
+        'early_leaving_today': len(df_today[df_today[col_status] == 'Early Leaving']) if col_status else 0,
         'absent_today'      : max(0, len(df_emp) - len(present_ids)),
     }
 
