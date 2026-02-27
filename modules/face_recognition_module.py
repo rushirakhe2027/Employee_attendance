@@ -24,26 +24,48 @@ class FaceRecognitionModule:
 
     def __init__(self):
         # --- 1. Fast Haar Cascade Detector ---
-        cascade_path = None
+        # Expanded paths for all Raspberry Pi OS versions
+        cascade_filename = 'haarcascade_frontalface_default.xml'
         candidate_paths = [
+            # Local project directory (most reliable)
+            os.path.join(os.path.dirname(__file__), '..', cascade_filename),
+            os.path.join(os.path.dirname(__file__), cascade_filename),
+            # Pi OS Bookworm (new layout)
             '/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml',
             '/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml',
             '/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml',
+            '/usr/local/lib/python3/dist-packages/cv2/data/haarcascade_frontalface_default.xml',
+            '/usr/lib/python3/dist-packages/cv2/data/haarcascade_frontalface_default.xml',
         ]
         if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
-            candidate_paths.insert(0, os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
+            candidate_paths.insert(0, os.path.join(cv2.data.haarcascades, cascade_filename))
 
+        cascade_path = None
         for path in candidate_paths:
             if os.path.exists(path):
                 cascade_path = path
                 break
+
+        # If still not found — download it automatically
+        if cascade_path is None:
+            local_cascade = os.path.join(os.path.dirname(__file__), '..', cascade_filename)
+            print("[FaceModule] Cascade not found. Downloading automatically...")
+            try:
+                import urllib.request
+                url = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
+                urllib.request.urlretrieve(url, local_cascade)
+                cascade_path = local_cascade
+                print(f"[FaceModule] Downloaded cascade to: {local_cascade}")
+            except Exception as e:
+                print(f"[FaceModule] CRITICAL: Could not download cascade: {e}")
+                print("[FaceModule] Run manually: wget -O haarcascade_frontalface_default.xml https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml")
 
         if cascade_path:
             self.haar_detector = cv2.CascadeClassifier(cascade_path)
             print(f"[FaceModule] Haar Cascade loaded from: {cascade_path}")
         else:
             self.haar_detector = None
-            print("[FaceModule] WARNING: Haar Cascade not found!")
+            print("[FaceModule] CRITICAL: Haar Cascade not found! Face detection disabled.")
 
         # --- 2. Load known dlib encodings from .npy files ---
         self.known_encodings = []  # list of 128-d numpy arrays
@@ -93,9 +115,9 @@ class FaceRecognitionModule:
         gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
         faces = self.haar_detector.detectMultiScale(
             gray,
-            scaleFactor=1.1,
-            minNeighbors=10,   # Strict: requires 10 confirmations
-            minSize=(60, 60)   # Ignore tiny/distant faces
+            scaleFactor=1.05,  # Smaller step = more thorough scan
+            minNeighbors=6,    # Balanced: strict enough to avoid false positives but still finds faces
+            minSize=(50, 50)   # Minimum face size (50x50 for Pi's 320x240 resolution)
         )
 
         if len(faces) == 0:
