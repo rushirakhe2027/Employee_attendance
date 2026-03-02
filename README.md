@@ -1,119 +1,123 @@
 # 🌐 IT SOLUTIONS Pvt Ltd — Advanced IoT Facial Attendance System
 
-This project is a high-performance, professional-grade **IoT Facial Attendance System** designed specifically for the Raspberry Pi environment. It combines real-time facial recognition, physical hardware feedback (LCD & Buzzer), and a modern Web Dashboard for management.
+This project is a high-performance, professional-grade **IoT Facial Attendance System** designed specifically for the Raspberry Pi. This guide covers **every step** from hardware wiring to software deployment.
 
 ---
 
-## 📑 Project Overview
+## 🏗️ Phase 1: Hardware & Power Connections
 
-This system provides an end-to-end solution for corporate or educational attendance tracking.
+Before turning on the software, you must wired the components correctly.
 
-- **Facial Recognition**: Uses Dlib's Deep Learning model (128-point encoding) for human-level accuracy.
-- **Dual Interface**: Operates via a Physical Console (Pi + Camera) and a Remote Web Dashboard (PC/Mobile).
-- **Smart Business Logic**: Automatically handles "On-Time," "Late Arrivals," and "Early Leavings" based on custom time rules (9:30 AM / 5:30 PM).
+### 1. Powering the System
+
+- **Main Power**: Use a **5V 3A Micro-USB (or USB-C)** power adapter for the Raspberry Pi.
+- **Voltage Rails**:
+  - Connect the **VCC** of the LCD and Buzzer to the **5V Pin** (Pin 2 or 4) on the Raspberry Pi.
+  - Connect the **GND** of all components to a **Ground Pin** (e.g., Pin 6) on the Pi.
+
+### 2. Component Wiring (GPIO)
+
+| Component   | Pin Name     | Raspberry Pi Pin        |
+| :---------- | :----------- | :---------------------- |
+| **I2C LCD** | VCC          | 5V (Pin 2)              |
+| **I2C LCD** | GND          | Ground (Pin 6)          |
+| **I2C LCD** | SDA          | GPIO 2 (Pin 3)          |
+| **I2C LCD** | SCL          | GPIO 3 (Pin 5)          |
+| **Buzzer**  | Positive (+) | GPIO 18 (Pin 12)        |
+| **Buzzer**  | Negative (-) | Ground (Pin 14)         |
+| **Camera**  | Ribbon/USB   | Camera Port or USB Port |
 
 ---
 
-## 🛠️ Hardware Requirements
+## 📶 Phase 2: Network & Remote Access
 
-1.  **Raspberry Pi** (Model 1 B+, 3, 4, or Zero 2W)
-2.  **Pi Camera Module** or USB Webcam
-3.  **I2C LCD Display (16x2)** (for status messages)
-4.  **Active Buzzer** (for audio feedback)
-5.  **Jumper Wires & Power Supply**
+The Pi is designed to be headless (no monitor needed).
 
----
+### 1. Connect to WiFi
 
-## ⚡ Initial Setup Guide (For New Users)
+The Pi will automatically search for this network:
 
-### 1. Network Connection (Hotspot)
-
-The Raspberry Pi is pre-configured to connect to the following network for professional deployment:
-
-- **WiFi Name (SSID):** `admin`
+- **WiFi SSID (Name):** `admin`
 - **WiFi Password:** `123456789`
 
-### 2. Connecting via PuTTY (Windows)
+### 2. Remote Control (PuTTY)
 
-To control the system from your laptop:
-
-1.  Download and install **PuTTY** from [putty.org](https://www.putty.org/).
-2.  Connect your laptop to the same `admin` WiFi.
-3.  Open PuTTY.
-4.  In **Host Name**, enter: `admin2027` (or the IP address shown on the LCD).
-5.  Click **Open**.
-6.  **Username:** `admin`
-7.  **Password:** `123456789`
+1.  Connect your laptop to the `admin` WiFi.
+2.  Open **PuTTY**.
+3.  **Host Name**: `admin2027` (If this fails, use the IP address shown on the LCD).
+4.  **Login User**: `admin`
+5.  **Password**: `123456789`
 
 ---
 
-## 🚀 How to Run the Project
+## 🚀 Phase 3: Software Execution
 
-Follow these commands exactly to start the system:
-
-### Step 1: Navigate to Project Folder
+### Step 1: Enter Project Directory
 
 ```bash
 cd ~/Employee_attendance
 ```
 
-### Step 2: Update to Latest Version
+### Step 2: Sync Latest Code
 
 ```bash
 git fetch origin
 git reset --hard origin/main
 ```
 
-### Step 3: Start the Combined System
-
-This single command starts both the **Camera System** and the **Web Dashboard**:
+### Step 3: Start the System
 
 ```bash
 python3 run_system.py
 ```
 
----
-
-## 📋 Understanding the Logic (Shift Rules)
-
-The system is programmed with "Smart Shift" logic (Kolkata IST):
-
-- **Check-IN (Morning)**:
-  - **9:00 AM - 9:30 AM**: Recorded as `On-Time`.
-  - **9:31 AM - 12:00 PM**: Recorded as `Late Arrived`.
-- **Check-OUT (Afternoon/Evening)**:
-  - **12:01 PM - 5:30 PM**: Recorded as `Early Leaving`.
-  - **After 5:30 PM**: Recorded as `Left` (Normal Checkout).
-- **Anti-Spam**: Once you Check-OUT, the system will say **"Try Tomorrow!"** to prevent double marking.
+_Wait 5 seconds. The LCD will show "IT SOLUTIONS Pvt" and your IP address._
 
 ---
 
-## 💻 Web Dashboard Guide
+## 🧠 Phase 4: How the System Works (Full Logic)
 
-Once the system starts, it will show a URL (e.g., `http://192.168.x.x:5000`). Open this in any browser:
+### 1. Facial recognition AI
 
-1.  **Main Dashboard**: See total employees, today's presence, and late counts.
-2.  **Employee Directory**: View all registered staff and their "Face Data" status.
-3.  **Full Logs**: Filter attendance by date and download the data as an **Excel/CSV** file.
-4.  **Erase Data**: A single click can delete an employee and all their associated history files.
+The system uses a **Hybrid AI Strategy**:
 
----
+- **Haar Cascade**: Scans 30 frames per second to find "shapes" of faces (low power).
+- **Dlib Deep Learning**: Once a face is stable, it extracts a **128-point neural map**. This is unique like a fingerprint.
+- **Matching**: It compares your live map against the `.npy` files in `database/faces/`.
 
-## 🔊 Signal Meanings (Buzzer & LCD)
+### 2. Shift Timing & Rules (Kolkata IST)
 
-- **1 Long Beep (▬)**: Success! Welcome or Good-bye.
-- **3 Short Beeps (▪ ▪ ▪)**: Warning! Late arrival or Early leaving recorded.
-- **5 Rapid Beeps (▪▪▪▪▪)**: Rejected! Already scanned or unknown face.
-
----
-
-## 🔧 Troubleshooting
-
-- **Camera not starting?** Ensure the ribbon cable is tight and `libcamerify` is installed.
-- **Face not detected?** Stand 1-2 feet from the camera with good lighting on your face.
-- **LCD Blank?** Check the I2C wires (SDA/SCL) and adjust the contrast screw on the back of the LCD module.
+- **Morning Shift (Check-IN)**:
+  - **Arrival < 9:30 AM**: Marked as **"On-Time"**.
+  - **Arrival 9:31 AM - 12:00 PM**: Marked as **"Late Arrived"**.
+- **Evening Shift (Check-OUT)**:
+  - **Anytime after IN and before 5:30 PM**: Marked as **"Early Leaving"**.
+  - **After 5:30 PM**: Marked as **"Left"** (Normal Checkout).
+- **Anti-Spam**: If you try to scan twice after checking out, the LCD says **"OUT Already Done"**.
 
 ---
 
-**Developed by:** IT SOLUTIONS Pvt Ltd
-**Version:** 2.1.0 (Advanced AI Edition)
+## 📊 Phase 5: The Web UI (Dashboard)
+
+Access the dashboard by typing the Pi's IP into your laptop browser (e.g., `http://192.168.1.15:5000`).
+
+- **Dashboard**: Real-time stats of how many workers are in/late.
+- **Employee Directory**: Manage staff and verify if their Face ID is registered.
+- **Full Logs**: Look at history for any specific date.
+- **Data Export**: Click "Download" to get an Excel-ready CSV of all records.
+- **Erase**: Completely delete an employee and all their logs from the combined database.
+
+---
+
+## 🔊 Signal Reference
+
+- **LCD: "Scanning..."**: AI is currently analyzing your face.
+- **Buzzer: 1 Long**: Successful Attendance.
+- **Buzzer: 3 Short**: Late or Early scan recorded.
+- **Buzzer: 5 Rapid**: Error or Already Scanned.
+
+---
+
+**Manufacturer:** IT SOLUTIONS Pvt Ltd
+**Project Lead:** rushirakhe2027
+**System Stability:** Industrial Grade (Rev 2.1)
