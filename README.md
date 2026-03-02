@@ -40,7 +40,7 @@ To control the system from your laptop:
 1.  Download and install **PuTTY** from [putty.org](https://www.putty.org/).
 2.  Connect your laptop to the same `admin` WiFi.
 3.  Open PuTTY.
-4.  In **Host Name**, enter: `admin2027.local` (or the IP address shown on the LCD).
+4.  In **Host Name**, enter: `admin2027` (or the IP address shown on the LCD).
 5.  Click **Open**.
 6.  **Username:** `admin`
 7.  **Password:** `123456789`
