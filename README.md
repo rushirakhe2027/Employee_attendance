@@ -1,77 +1,118 @@
-# EmployeeSync AI: Facial Attendance & Late Monitoring System
+# 🌐 IT SOLUTIONS Pvt Ltd — Advanced IoT Facial Attendance System
 
-A professional Raspberry Pi-based employee attendance system featuring AI face recognition, a real-time web dashboard, and automated late arrival monitoring.
-
-## 🌟 Key Features
-
-- **AI Face Recognition**: High-accuracy detection using Dlib (HOG) and 128-dimensional facial encodings.
-- **Robust Registration**: Advanced feature extraction with 68-point landmark alignment and "jitter" data augmentation.
-- **Web Dashboard**: Modern, light-themed Flask dashboard with Socket.IO real-time updates.
-- **Late Monitoring**: Automatically flags late arrivals based on customizable office start times.
-- **Hardware Feedback**: 16x2 LCD display & localized buzzer patterns (Present: 1 Beep, Late: 2 Beeps, Unknown: Long Beep).
-- **Simulation Mode**: Built-in support to run on non-Raspberry Pi devices (Windows/PC) for testing purposes.
-
-## 🛠️ Hardware Requirements
-
-- **Raspberry Pi** (4B recommended, but supports others)
-- **Camera Module** (Pi Camera or Standard USB Webcam)
-- **16x2 LCD Display** (I2C Interface)
-- **Active Buzzer** (Connected to GPIO 18)
-
-## 📁 Project Structure
-
-```text
-├── app.py                # Flask Web Dashboard & Socket.IO Server
-├── face_app.py           # Real-time Face Recognition Engine
-├── modules/
-│   ├── face_recognition_module.py  # Core AI Brain (Alignment/Extraction)
-│   ├── lcd_module.py               # Hardware LCD Controller
-│   └── buzzer_module.py            # Hardware Buzzer patterns
-├── database/
-│   ├── employees.csv     # Employee Directory
-│   ├── attendance.csv    # Master Attendance Logs
-│   ├── faces/            # Aligned employee photos
-│   └── encodings/        # Pre-computed AI facial data (.npy)
-├── templates/            # Web UI Layouts
-└── static/               # Style & Asset Files
-```
-
-## 🚀 Getting Started
-
-### 1. Installation
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure Your Office Time
-
-Open `face_app.py` and set your `OFFICE_START_TIME`:
-
-```python
-OFFICE_START_TIME = "09:30"
-```
-
-### 3. Launch the Dashboard
-
-```bash
-python app.py
-```
-
-Access the UI at: `http://localhost:5000`
-
-### 4. Launch the AI Engine
-
-```bash
-python face_app.py
-```
-
-## 📝 Usage Notes
-
-- **Registration**: Add employees via the "Directory" tab on the web dashboard. Uploading a photo will automatically trigger the AI alignment and feature extraction process.
-- **Real-time Updates**: The dashboard uses WebSockets to show "Toasts" instantly when someone is recognized at the door.
-- **Deployment**: For permanent use, it is recommended to run both scripts as `systemd` services on your Raspberry Pi.
+This project is a high-performance, professional-grade **IoT Facial Attendance System** designed specifically for the Raspberry Pi environment. It combines real-time facial recognition, physical hardware feedback (LCD & Buzzer), and a modern Web Dashboard for management.
 
 ---
 
-_Refactored with ❤️ for a professional workplace environment._
+## 📑 Project Overview
+
+This system provides an end-to-end solution for corporate or educational attendance tracking.
+
+- **Facial Recognition**: Uses Dlib's Deep Learning model (128-point encoding) for human-level accuracy.
+- **Dual Interface**: Operates via a Physical Console (Pi + Camera) and a Remote Web Dashboard (PC/Mobile).
+- **Smart Business Logic**: Automatically handles "On-Time," "Late Arrivals," and "Early Leavings" based on custom time rules (9:30 AM / 5:30 PM).
+
+---
+
+## 🛠️ Hardware Requirements
+
+1.  **Raspberry Pi** (Model 1 B+, 3, 4, or Zero 2W)
+2.  **Pi Camera Module** or USB Webcam
+3.  **I2C LCD Display (16x2)** (for status messages)
+4.  **Active Buzzer** (for audio feedback)
+5.  **Jumper Wires & Power Supply**
+
+---
+
+## ⚡ Initial Setup Guide (For New Users)
+
+### 1. Network Connection (Hotspot)
+
+The Raspberry Pi is pre-configured to connect to the following network for professional deployment:
+
+- **WiFi Name (SSID):** `admin`
+- **WiFi Password:** `123456789`
+
+### 2. Connecting via PuTTY (Windows)
+
+To control the system from your laptop:
+
+1.  Download and install **PuTTY** from [putty.org](https://www.putty.org/).
+2.  Connect your laptop to the same `admin` WiFi.
+3.  Find the Pi's IP address (shown on the LCD upon startup).
+4.  Open PuTTY, enter the **IP Address**, and click **Open**.
+5.  **Login:** `admin` (or your Pi username)
+6.  **Password:** `admin2027` (or your Pi password)
+
+---
+
+## 🚀 How to Run the Project
+
+Follow these commands exactly to start the system:
+
+### Step 1: Navigate to Project Folder
+
+```bash
+cd ~/Employee_attendance
+```
+
+### Step 2: Update to Latest Version
+
+```bash
+git fetch origin
+git reset --hard origin/main
+```
+
+### Step 3: Start the Combined System
+
+This single command starts both the **Camera System** and the **Web Dashboard**:
+
+```bash
+python3 run_system.py
+```
+
+---
+
+## 📋 Understanding the Logic (Shift Rules)
+
+The system is programmed with "Smart Shift" logic (Kolkata IST):
+
+- **Check-IN (Morning)**:
+  - **9:00 AM - 9:30 AM**: Recorded as `On-Time`.
+  - **9:31 AM - 12:00 PM**: Recorded as `Late Arrived`.
+- **Check-OUT (Afternoon/Evening)**:
+  - **12:01 PM - 5:30 PM**: Recorded as `Early Leaving`.
+  - **After 5:30 PM**: Recorded as `Left` (Normal Checkout).
+- **Anti-Spam**: Once you Check-OUT, the system will say **"Try Tomorrow!"** to prevent double marking.
+
+---
+
+## 💻 Web Dashboard Guide
+
+Once the system starts, it will show a URL (e.g., `http://192.168.x.x:5000`). Open this in any browser:
+
+1.  **Main Dashboard**: See total employees, today's presence, and late counts.
+2.  **Employee Directory**: View all registered staff and their "Face Data" status.
+3.  **Full Logs**: Filter attendance by date and download the data as an **Excel/CSV** file.
+4.  **Erase Data**: A single click can delete an employee and all their associated history files.
+
+---
+
+## 🔊 Signal Meanings (Buzzer & LCD)
+
+- **1 Long Beep (▬)**: Success! Welcome or Good-bye.
+- **3 Short Beeps (▪ ▪ ▪)**: Warning! Late arrival or Early leaving recorded.
+- **5 Rapid Beeps (▪▪▪▪▪)**: Rejected! Already scanned or unknown face.
+
+---
+
+## 🔧 Troubleshooting
+
+- **Camera not starting?** Ensure the ribbon cable is tight and `libcamerify` is installed.
+- **Face not detected?** Stand 1-2 feet from the camera with good lighting on your face.
+- **LCD Blank?** Check the I2C wires (SDA/SCL) and adjust the contrast screw on the back of the LCD module.
+
+---
+
+**Developed by:** IT SOLUTIONS Pvt Ltd
+**Version:** 2.1.0 (Advanced AI Edition)
