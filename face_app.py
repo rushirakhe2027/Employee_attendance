@@ -177,12 +177,7 @@ class EmployeeAttendanceApp:
             self.lcd.display("Data Saved", status)
         else:
             # --- SECOND SCAN (Already has IN) ---
-            if current_time < lunch_over:
-                # Trying to checkout before 1 PM? Use custom message or handle
-                self.lcd.display("Too Early", "Go to Work!")
-                self.buzzer.beep_rejected()
-                return
-
+            # If they scan again at any time, it is a Check-OUT
             status = "Left" if current_time >= office_end else "Early Leaving"
             msg = "Goodbye!"
             self.buzzer.beep_on_time() if status == "Left" else self.buzzer.beep_late_or_early()
