@@ -11,8 +11,9 @@ from modules.buzzer_module import BuzzerModule
 
 # ─── Configuration ──────────────────────────────────────────────────────────
 OFFICE_START   = "09:30"   # On-time cutoff
-OFFICE_END     = "17:30"   # Normal checkout time
-NOON_CUTOFF    = "13:00"   # Before this hour = CHECK-IN, after = CHECK-OUT
+OFFICE_END     = "17:30"   # Normal checkout time (5:30 PM)
+NOON_CUTOFF    = "12:00"   # After this = No more Check-INs (only Check-OUTs)
+LUNCH_OVER     = "13:00"   # Checkout starts after 1 PM
 IST            = pytz.timezone('Asia/Kolkata')
 DATABASE_DIR   = "database"
 ATTENDANCE_FILE = f"{DATABASE_DIR}/attendance.csv"
@@ -109,6 +110,7 @@ class EmployeeAttendanceApp:
         office_start = datetime.strptime(OFFICE_START, "%H:%M").time()
         office_end   = datetime.strptime(OFFICE_END,   "%H:%M").time()
         noon         = datetime.strptime(NOON_CUTOFF,  "%H:%M").time()
+        lunch_over   = datetime.strptime(LUNCH_OVER,   "%H:%M").time()
 
         # Anti-spam: ignore for 30 s after last scan
         if name in self.cooldown_until and now < self.cooldown_until[name]:
@@ -117,10 +119,10 @@ class EmployeeAttendanceApp:
         # Get employee ID
         try:
             df_emp = pd.read_csv(EMPLOYEES_FILE)
-            emp_row = df_emp[df_emp['Name'] == name]
-            emp_id  = str(emp_row['Employee_ID'].values[0]) if not emp_row.empty else "?"
+            emp_row = df_emp[df_emp['Name'].str.strip() == name.strip()]
+            emp_id  = str(emp_row['Employee_ID'].values[0]) if not emp_row.empty else "NEW"
         except Exception:
-            emp_id = "?"
+            emp_id = "NEW"
 
         # What records exist for today?
         today_df   = self._get_todays_records(name)
@@ -140,50 +142,55 @@ class EmployeeAttendanceApp:
         # ── Decision Tree ────────────────────────────────────────────────────
         if has_out:
             # Already OUT for today → refuse
-            self.lcd.display("Checked OUT", "Try Tomorrow!")
+            self.lcd.display("OUT Already Done", "Try Tomorrow!")
             self.buzzer.beep_rejected()
-            print(f"[SKIP] {name} already checked OUT today.")
-            self.cooldown_until[name] = now + timedelta(hours=6)
+            print(f"[SKIP] {name} already finished for today.")
+            self.cooldown_until[name] = now + timedelta(hours=2)
             return
 
-        # ── Decision Tree ────────────────────────────────────────────────────
         if not has_in:
-            # First scan of the day
+            # --- FIRST SCAN OF THE DAY ---
             if current_time <= noon:
-                # Normal Morning IN
+                # Morning scan = CHECK-IN
                 status = "On-Time" if current_time <= office_start else "Late Arrived"
-                rec_type = "IN"
-                msg1, msg2 = "Welcome!", status
+                msg = "Welcome!"
                 self.buzzer.beep_on_time() if status == "On-Time" else self.buzzer.beep_late_or_early()
                 self._save_attendance(emp_id, name, today, current_t, status, "IN")
-                self.lcd.display(msg1, name[:16])
-                time.sleep(1)
-                self.lcd.display("IN Recorded", msg2)
-            else:
-                # Afternoon/Evening scan BUT NO IN RECORD
-                # Auto-mark IN (Late) and then mark OUT
-                print(f"[AUTO] Marking IN for {name} (Missed morning scan)")
+            elif current_time > lunch_over:
+                # First time scan is in the afternoon -> Mark Late IN + Regular/Early OUT
+                print(f"[AUTO] Late Arrival missing IN - Marking IN for {name}")
                 self._save_attendance(emp_id, name, today, "09:31:00", "Late Arrived", "IN")
                 
                 status = "Left" if current_time >= office_end else "Early Leaving"
-                msg1, msg2 = "Goodbye!", status
+                msg = "Goodbye!"
                 self.buzzer.beep_on_time() if status == "Left" else self.buzzer.beep_late_or_early()
                 self._save_attendance(emp_id, name, today, current_t, status, "OUT")
+            else:
+                # Between 12 and 1 PM (Lunch break) - Just mark Late IN
+                status = "Late Arrived"
+                msg = "Late Arrival"
+                self.buzzer.beep_late_or_early()
+                self._save_attendance(emp_id, name, today, current_t, status, "IN")
                 
-                self.lcd.display(msg1, name[:16])
-                time.sleep(1)
-                self.lcd.display("OUT Recorded", msg2)
+            self.lcd.display(msg, name[:16])
+            time.sleep(1)
+            self.lcd.display("Data Saved", status)
         else:
-            # Already has IN, so this is OUT
+            # --- SECOND SCAN (Already has IN) ---
+            if current_time < lunch_over:
+                # Trying to checkout before 1 PM? Use custom message or handle
+                self.lcd.display("Too Early", "Go to Work!")
+                self.buzzer.beep_rejected()
+                return
+
             status = "Left" if current_time >= office_end else "Early Leaving"
-            rec_type = "OUT"
-            msg1, msg2 = "Goodbye!", status
+            msg = "Goodbye!"
             self.buzzer.beep_on_time() if status == "Left" else self.buzzer.beep_late_or_early()
             self._save_attendance(emp_id, name, today, current_t, status, "OUT")
             
-            self.lcd.display(msg1, name[:16])
+            self.lcd.display(msg, name[:16])
             time.sleep(1)
-            self.lcd.display("OUT Recorded", msg2)
+            self.lcd.display("OUT Recorded", status)
 
         # Return to idle screen
         time.sleep(2)
