@@ -20,9 +20,9 @@ class FaceRecognitionModule:
     This means dlib NEVER runs on every frame — only when detection is confident.
     """
 
-    # Tightened tolerance to 0.38 to prevent 'wrong predictions'
-    # Smaller = Stricter. 
-    TOLERANCE = 0.38 
+    # Balanced tolerance: 0.42 is the 'Sweet Spot' for Raspberry Pi 1.
+    # It allows for facial changes (glasses/hats) while still rejecting strangers.
+    TOLERANCE = 0.42 
     SCALE = 0.5  # Maintain 4x speed scaling
 
     def __init__(self):
@@ -240,29 +240,16 @@ class FaceRecognitionModule:
                 print(f"[AI] Rejected Candidate: {self.known_names[best_match_index]} (too far: {round(min_distance, 3)})")
             return ["Unknown"]
 
-    def register_new_face(self, name, frame_rgb):
+    def register_new_face(self, name, frames_rgb):
         """
         Registers a new face by:
-        1. Detecting the face in the frame using Haar Cascade.
-        2. Encoding it with dlib (128-point).
-        3. Saving the encoding as a .npy file in database/faces/.
+        1. Taking 5 samples of the face from different angles.
+        2. Computing 128-point encodings for all samples.
+        3. Saving the (5, 128) array as a .npy file.
         4. Saving a reference photo as a .jpg.
-        5. Reloading the database so the person is immediately recognized.
+        5. Reloading the database.
 
         Returns (True, "message") on success, (False, "error") on failure.
-        """
-        """
-        Multi-Sample Registration — the most impactful accuracy upgrade.
-        Instead of 1 photo, captures 5 frames spread over ~3 seconds.
-        All 5 encodings are stored as a (5, 128) array in one .npy file.
-
-        During recognition, ALL 5 are compared and the BEST (minimum)
-        distance is used — so the system recognises you even from a
-        slightly different angle or in different lighting.
-
-        Args:
-            name      : employee name string
-            frames_rgb: list of 5 RGB frames captured by face_app
         """
         if not isinstance(frames_rgb, list):
             frames_rgb = [frames_rgb]  # backwards-compat with single frame
