@@ -1,4 +1,4 @@
-# 🌐 IT SOLUTIONS Pvt Ltd — Advanced IoT Facial Attendance System
+# Employee Attendance and Late Arrival Alert System Using Facial Recognition
 
 This project is a high-performance, professional-grade **IoT Facial Attendance System** designed specifically for the Raspberry Pi. This guide covers **every step** from hardware wiring to software deployment.
 
@@ -71,7 +71,7 @@ git reset --hard origin/main
 python3 run_system.py
 ```
 
-_Wait 5 seconds. The LCD will show "IT SOLUTIONS Pvt" and your IP address._
+_Wait 5 seconds. The LCD will show the Welcome message and your IP address._
 
 ---
 
@@ -117,7 +117,3 @@ Access the dashboard by typing the Pi's IP into your laptop browser (e.g., `http
 - **Buzzer: 5 Rapid**: Error or Already Scanned.
 
 ---
-
-**Manufacturer:** IT SOLUTIONS Pvt Ltd
-**Project Lead:** rushirakhe2027
-**System Stability:** Industrial Grade (Rev 2.1)
