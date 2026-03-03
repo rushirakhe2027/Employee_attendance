@@ -20,9 +20,9 @@ class FaceRecognitionModule:
     This means dlib NEVER runs on every frame — only when detection is confident.
     """
 
-    # Finalized tolerance: 0.50. This ensures maximum stability on Pi 1.
-    # It allows for background variations while maintaining correct identity.
-    TOLERANCE = 0.50 
+    # Maximum Reach Tolerance: 0.54. 
+    # This allows the system to recognize people from further away and in difficult lighting.
+    TOLERANCE = 0.54 
     SCALE = 0.5  # Maintain 4x speed scaling
 
     def __init__(self):
@@ -133,16 +133,18 @@ class FaceRecognitionModule:
         small = cv2.resize(frame_rgb, (0, 0), fx=self.SCALE, fy=self.SCALE)
         gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
         
-        # --- NEW: CLAHE Lighting Enhancement ---
-        # This makes the AI work in dark or bright situations
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        # --- NEW: Advanced 2-Stage Lighting Enhancement ---
+        # 1. Global equalization for overall brightness
+        gray = cv2.equalizeHist(gray)
+        # 2. CLAHE for local detail preservation
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
         gray = clahe.apply(gray)
         
         faces = self.haar_detector.detectMultiScale(
             gray,
             scaleFactor=1.1,
-            minNeighbors=10,   # Super Strict: ignores background patterns
-            minSize=(100, 100) # Only detects people standing close
+            minNeighbors=5,    # Relaxed: easier to find faces at a distance
+            minSize=(50, 50)   # Flexible: detects faces far and near
         )
 
         if len(faces) == 0:
