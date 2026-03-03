@@ -152,7 +152,7 @@ class EmployeeAttendanceApp:
             # --- FIRST SCAN OF THE DAY ---
             if current_time <= noon:
                 # Morning scan = CHECK-IN
-                status = "On-Time" if current_time <= office_start else "Late Arrived"
+                status = "On-Time" if current_time < office_start else "Late Arrived"
                 msg = "Welcome!"
                 self.buzzer.beep_on_time() if status == "On-Time" else self.buzzer.beep_late_or_early()
                 self._save_attendance(emp_id, name, today, current_t, status, "IN")
