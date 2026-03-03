@@ -293,16 +293,20 @@ class EmployeeAttendanceApp:
                     if self.detection_counter == 0:
                         self.lcd.display("Status: Scanning", "Please wait...")
                     self.detection_counter += 1
-                    self.face_gone_count = 0 # Face is still here
+                    self.face_gone_count = 0
                 else:
                     self.detection_counter = 0
                     self.face_gone_count += 1
-                    if self.face_gone_count >= 5:
-                        self.last_marked = None # Reset lock so same person can scan later
+                    # Require person to be gone for ~1.5 seconds (15 frames) to reset
+                    if self.face_gone_count >= 15:
+                        if self.last_marked:
+                            self.lcd.display("Ready for Next", "Employee...")
+                            time.sleep(1)
+                        self.last_marked = None
                     continue
 
-                # ── STEP 2: Require 2 consecutive detections (Faster) ─────
-                if self.detection_counter < 2:
+                # ── STEP 2: Require 4 consecutive detections (Stability) ─────
+                if self.detection_counter < 4:
                     continue
 
                 # ── STEP 3: Heavy dlib recognition ────────────────────────
@@ -316,6 +320,8 @@ class EmployeeAttendanceApp:
 
                 # PREVENT REPEAT: Skip if we just processed this person and they haven't walked away
                 if name != "Unknown" and self.last_marked == name:
+                    self.lcd.display(name[:16], "Please Step Away")
+                    time.sleep(0.5)
                     continue
 
                 if name != "Unknown":
