@@ -40,7 +40,17 @@ The Pi will automatically search for this network:
 - **WiFi SSID (Name):** `admin`
 - **WiFi Password:** `123456789`
 
-### 2. Remote Control (PuTTY)
+### 2. How to Download & Install PuTTY (Windows)
+
+If you don't have PuTTY on your laptop, follow these steps:
+
+1.  Go to: [www.putty.org](https://www.putty.org/)
+2.  Click the link that says **"You can download PuTTY here"**.
+3.  Under **"Package files"**, look for the **64-bit x86** installer (`.msi` file).
+4.  Download it and run the installer.
+5.  Click **Next** through the setup until it is installed.
+
+### 3. Remote Control (PuTTY)
 
 1.  Connect your laptop to the `admin` WiFi.
 2.  Open **PuTTY**.
