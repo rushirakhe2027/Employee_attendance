@@ -135,10 +135,11 @@ class EmployeeAttendanceApp:
         has_out = False
         
         if not today_df.empty and 'Type' in today_df.columns:
-            has_in  = not today_df[today_df['Type'] == 'IN'].empty
-            has_out = not today_df[today_df['Type'] == 'OUT'].empty
+            # Strip whitespace from the 'Type' column values before comparing
+            df_type_stripped = today_df['Type'].astype(str).str.strip()
+            has_in  = not today_df[df_type_stripped == 'IN'].empty
+            has_out = not today_df[df_type_stripped == 'OUT'].empty
         elif not today_df.empty:
-            # Fallback for very old formats: assume first scan today is IN
             has_in = True 
 
 
