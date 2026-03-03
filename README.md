@@ -6,7 +6,7 @@ This project is a high-performance, professional-grade **IoT Facial Attendance S
 
 ## 🏗️ Phase 1: Hardware & Power Connections
 
-Before turning on the software, you must wired the components correctly.
+Before turning on the software, you must wire the components correctly.
 
 ### 1. Powering the System
 
@@ -98,12 +98,13 @@ The system uses a **Hybrid AI Strategy**:
 ### 2. Shift Timing & Rules (Kolkata IST)
 
 - **Morning Shift (Check-IN)**:
-  - **Arrival < 9:30 AM**: Marked as **"On-Time"**.
-  - **Arrival 9:31 AM - 12:00 PM**: Marked as **"Late Arrived"**.
+  - **Before 9:30 AM**: Recorded accurately as **"On-Time"** (1 Long Beep confirmation).
+  - **9:30 AM onwards**: Recorded as **"Late Arrived"** (3 Rapid alert beeps triggered).
+  - **Automatic Entry**: If an employee scans for the first time in the afternoon, the system automatically records their _Late IN_ at 9:31 AM so their daily record is never incomplete.
 - **Evening Shift (Check-OUT)**:
-  - **Anytime after IN and before 5:30 PM**: Marked as **"Early Leaving"**.
-  - **After 5:30 PM**: Marked as **"Left"** (Normal Checkout).
-- **Anti-Spam**: If you try to scan twice after checking out, the LCD says **"OUT Already Done"**.
+  - **Before 5:30 PM**: Recorded as **"Early Leaving"** (Authorized but noted).
+  - **From 5:30 PM onwards**: Recorded as **"Left"** (Normal checkout).
+- **Anti-Spam**: Once a person has checked OUT, the system will prevent triple-scanning and say: **"OUT Already Done" / "Try Tomorrow!"**
 
 ---
 
