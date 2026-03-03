@@ -242,15 +242,16 @@ class EmployeeAttendanceApp:
             df = pd.concat([df, new_emp], ignore_index=True)
             df.to_csv(EMPLOYEES_FILE, index=False)
             
-            print(f"[REG] Success! Welcome, {new_name}.")
-            self.lcd.display("Registered!", new_name[:16])
-            
-            # Immediately mark attendance for the newly registered person
-            time.sleep(1)
-            self.mark_attendance(new_name)
-
+            print(f"[REG] Success! Registered {new_name}.")
             self.lcd.display("Registered!", new_name[:16])
             self.buzzer.beep_present()
+            
+            # Reset face tracking so the new employee can scan themselves normally
+            self.last_marked = None
+            self.face_gone_count = 5 
+            
+            time.sleep(2)
+            self.lcd.display("Ready to Scan", "Welcome!")
             print(f"[REG] SUCCESS: {msg}")
         else:
             self.lcd.display("Reg Failed", "Try again")
