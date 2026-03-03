@@ -20,9 +20,9 @@ class FaceRecognitionModule:
     This means dlib NEVER runs on every frame — only when detection is confident.
     """
 
-    # Optimized tolerance: 0.48 is the 'Sweet Spot' for Pi 1 hardware.
-    # It reliably recognizes employees (distances up to 0.47) while blocking strangers.
-    TOLERANCE = 0.48 
+    # Finalized tolerance: 0.50. This ensures maximum stability on Pi 1.
+    # It allows for background variations while maintaining correct identity.
+    TOLERANCE = 0.50 
     SCALE = 0.5  # Maintain 4x speed scaling
 
     def __init__(self):
@@ -141,8 +141,8 @@ class FaceRecognitionModule:
         faces = self.haar_detector.detectMultiScale(
             gray,
             scaleFactor=1.1,
-            minNeighbors=7,    # Stricter: prevents false background detections
-            minSize=(80, 80)   # Larger: ensures the person is close to camera
+            minNeighbors=10,   # Super Strict: ignores background patterns
+            minSize=(100, 100) # Only detects people standing close
         )
 
         if len(faces) == 0:
