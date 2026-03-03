@@ -34,12 +34,12 @@
         {% for record in attendance %}
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border: 1px solid var(--border); border-radius: 0.75rem; background: #fafafa;">
             <div>
-                <div style="font-weight: 600; font-size: 1rem;">{{ record.Name }}</div>
-                <div style="color: var(--text-muted); font-size: 0.8125rem;">{{ record.Date }} at {{ record.Time }}</div>
+                <div style="font-weight: 600; font-size: 1.05rem; color: var(--text-main);">{{ record.Name }} <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 400; margin-left: 0.5rem;">[ID: {{ record.Employee_ID }}]</span></div>
+                <div style="color: var(--text-muted); font-size: 0.85rem; margin-top:0.2rem;">{{ record.Date }} at <span style="font-weight: 600; color:var(--text-main);">{{ record.Time }}</span></div>
             </div>
-            <div style="display: flex; align-items: center; gap: 0.75rem;">
-                <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: #eee; border-radius: 0.25rem; font-weight: 600; color: #555;">{{ record.Type }}</span>
-                <span class="status-pill status-{{ (record.Status|string).lower().replace(' ', '-') }}">{{ record.Status }}</span>
+            <div style="display: flex; align-items: center; gap: 0.85rem;">
+                <span style="font-size: 0.7rem; padding: 0.3rem 0.6rem; background: #e2e8f0; border-radius: 6px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">{{ record.Type }}</span>
+                <span class="status-pill status-{{ (record.Status|string).lower().replace(' ', '-') }}" style="min-width: 100px; text-align: center; border-radius: 8px;">{{ record.Status }}</span>
             </div>
         </div>
         {% else %}

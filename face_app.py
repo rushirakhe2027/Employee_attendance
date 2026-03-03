@@ -195,7 +195,8 @@ class EmployeeAttendanceApp:
         new_row = pd.DataFrame([[emp_id, name, date, time_str, status, rec_type]],
                                columns=['Employee_ID','Name','Date','Time','Status','Type'])
         new_row.to_csv(ATTENDANCE_FILE, mode='a',
-                       header=not os.path.exists(ATTENDANCE_FILE), index=False)
+                       header=not os.path.exists(ATTENDANCE_FILE), 
+                       index=False, lineterminator='\n')
         print(f"[{rec_type}] {name} | {status} | {time_str}")
 
         # 30-second cooldown
@@ -247,6 +248,13 @@ class EmployeeAttendanceApp:
                 columns=['Employee_ID','Name','Phone','Department','Join_Date'])
             df = pd.concat([df, new_emp], ignore_index=True)
             df.to_csv(EMPLOYEES_FILE, index=False)
+            
+            print(f"[REG] Success! Welcome, {new_name}.")
+            self.lcd.display("Registered!", new_name[:16])
+            
+            # Immediately mark attendance for the newly registered person
+            time.sleep(1)
+            self.mark_attendance(new_name)
 
             self.lcd.display("Registered!", new_name[:16])
             self.buzzer.beep_present()

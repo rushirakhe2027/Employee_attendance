@@ -53,10 +53,14 @@ def index():
     ensure_db()
     try:
         df_att = pd.read_csv(ATTENDANCE_FILE)
+        df_att = df_att.dropna(how='all')
         df_att.columns = [str(c).strip() for c in df_att.columns]
-        if df_att.empty:
-            df_att = pd.DataFrame(columns=['Employee_ID','Name','Date','Time','Status','Type'])
-    except:
+        
+        # Strip all string values to prevent matching errors (e.g., "Late Arrived " vs "Late Arrived")
+        for col in df_att.select_dtypes(['object']):
+            df_att[col] = df_att[col].astype(str).str.strip()
+    except Exception as e:
+        print(f"[Web] CSV read error: {e}")
         df_att = pd.DataFrame(columns=['Employee_ID','Name','Date','Time','Status','Type'])
         
     try:
@@ -71,10 +75,11 @@ def index():
     df_today = df_att[df_att['Date'] == today] if 'Date' in df_att.columns else pd.DataFrame()
     
     present_ids = []
-    if not df_today.empty and 'Employee_ID' in df_today.columns:
-        if 'Type' in df_today.columns:
+    if not df_today.empty:
+        # Check 'IN' scans for today
+        if 'Type' in df_today.columns and 'Employee_ID' in df_today.columns:
             present_ids = df_today[df_today['Type'] == 'IN']['Employee_ID'].unique()
-        else:
+        elif 'Employee_ID' in df_today.columns:
             present_ids = df_today['Employee_ID'].unique()
 
     stats = {
@@ -85,10 +90,10 @@ def index():
     }
     stats['absent_today'] = max(0, stats['total_employees'] - stats['present_today'])
 
-    # presentation ready dictionary (ensures all keys exist for Jinja)
+    # Recent activity preparation
     try:
-        latest_df = df_att.tail(15).iloc[::-1].copy()
-        # Fill all empty/NaN values with "N/A"
+        # Take last 10 records
+        latest_df = df_att.tail(10).iloc[::-1].copy()
         latest_df = latest_df.fillna("N/A")
         
         mandatory_keys = ['Employee_ID','Name','Date','Time','Status','Type']
@@ -97,15 +102,11 @@ def index():
                 latest_df[col] = "N/A"
         
         latest = latest_df.to_dict('records')
-        
-        # Double check: ensure every record has every key (Jinja insurance)
-        for rec in latest:
-            for key in mandatory_keys:
-                if key not in rec:
-                    rec[key] = "N/A"
     except Exception as e:
-        print(f"[Web] Data transform error: {e}")
+        print(f"[Web] Recent Activity error: {e}")
         latest = []
+
+    return render_template('index.html', stats=stats, attendance=latest, today=today)
 
     return render_template('index.html', stats=stats, attendance=latest, today=today)
 
