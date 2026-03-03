@@ -1,7 +1,7 @@
 import cv2
 import time
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import pytz
 
@@ -192,8 +192,6 @@ class EmployeeAttendanceApp:
                        index=False, lineterminator='\n')
         print(f"[{rec_type}] {name} | {status} | {time_str}")
 
-        # 30-second cooldown
-        from datetime import timedelta
         self.cooldown_until[name] = now_ist() + timedelta(seconds=30)
 
     # ─── Registration ─────────────────────────────────────────────────────────
