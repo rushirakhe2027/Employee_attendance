@@ -271,8 +271,8 @@ class EmployeeAttendanceApp:
         try:
             while self.running:
                 # Periodic LCD refresh to show IP
-                if time.time() - self.last_lcd_update > 15:
-                    self.lcd.display("IT SOLUTIONS Pvt", f"IP:{self.ip_address}")
+                if time.time() - self.last_lcd_update > 10:
+                    self.lcd.display("Dashboard IP:", self.ip_address)
                     self.last_lcd_update = time.time()
                     # Removed blocking sleep
 
