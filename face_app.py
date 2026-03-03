@@ -321,12 +321,16 @@ class EmployeeAttendanceApp:
                     print("  2. Skip / Rescan")
                     print("=" * 44)
                     choice = input("  Choice (1/2): ").strip()
+                    
+                    # Flush camera buffer (prevents immediate re-detection of the same frame)
+                    for _ in range(5):
+                        self.camera.read()
+                        
                     if choice == "1":
                         self.register_employee(rgb_frame)
                     else:
                         self.lcd.display("IT SOLUTIONS Pvt", "Scan Face")
-
-                time.sleep(0.01)
+                        time.sleep(1) # Delay to allow person to walk away
 
         except KeyboardInterrupt:
             pass
