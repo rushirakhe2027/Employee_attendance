@@ -20,9 +20,9 @@ class FaceRecognitionModule:
     This means dlib NEVER runs on every frame — only when detection is confident.
     """
 
-    # Balanced tolerance: 0.42 is the 'Sweet Spot' for Raspberry Pi 1.
-    # It allows for facial changes (glasses/hats) while still rejecting strangers.
-    TOLERANCE = 0.42 
+    # Optimized tolerance: 0.48 is the 'Sweet Spot' for Pi 1 hardware.
+    # It reliably recognizes employees (distances up to 0.47) while blocking strangers.
+    TOLERANCE = 0.48 
     SCALE = 0.5  # Maintain 4x speed scaling
 
     def __init__(self):
