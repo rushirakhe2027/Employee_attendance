@@ -55,6 +55,8 @@ class EmployeeAttendanceApp:
         self.running          = True
         self.detection_counter = 0
         self.cooldown_until   = {}  # name -> datetime
+        self.last_marked      = None # Prevent repeat scan until face is gone
+        self.face_gone_count  = 0
         self.ip_address       = get_ip()
         self.last_lcd_update  = time.time()
 
@@ -87,17 +89,18 @@ class EmployeeAttendanceApp:
 
     # ─── Core Attendance Logic ────────────────────────────────────────────────
     def _get_todays_records(self, name):
-        """Return today's attendance rows for this employee."""
+        """Return today's attendance rows for this employee (stripping whitespace)."""
         today = now_ist().strftime("%Y-%m-%d")
         try:
             df = pd.read_csv(ATTENDANCE_FILE)
             df.columns = [str(c).strip() for c in df.columns]
             
-            # Defensive check for columns
-            if 'Name' not in df.columns or 'Date' not in df.columns:
-                return pd.DataFrame()
-                
-            return df[(df['Name'] == name) & (df['Date'] == today)]
+            # Robust mapping: Strip column values to handle spaces from CSV or GUI
+            if 'Name' in df.columns:
+                df['Name'] = df['Name'].astype(str).str.strip()
+            
+            target_name = str(name).strip()
+            return df[(df['Name'] == target_name) & (df['Date'] == today)]
         except Exception:
             return pd.DataFrame()
 
@@ -145,46 +148,36 @@ class EmployeeAttendanceApp:
             self.lcd.display("OUT Already Done", "Try Tomorrow!")
             self.buzzer.beep_rejected()
             print(f"[SKIP] {name} already finished for today.")
-            self.cooldown_until[name] = now + timedelta(hours=2)
+            # Set a very long cooldown for this person's record
+            self.cooldown_until[name] = now + timedelta(hours=6)
+            self.last_marked = name
             return
 
         if not has_in:
-            # --- FIRST SCAN OF THE DAY ---
-            if current_time <= noon:
-                # Morning scan = CHECK-IN
-                status = "On-Time" if current_time < office_start else "Late Arrived"
-                msg = "Welcome!"
-                self.buzzer.beep_on_time() if status == "On-Time" else self.buzzer.beep_late_or_early()
-                self._save_attendance(emp_id, name, today, current_t, status, "IN")
-            elif current_time > lunch_over:
-                # First time scan is in the afternoon -> Mark Late IN + Regular/Early OUT
-                print(f"[AUTO] Late Arrival missing IN - Marking IN for {name}")
-                self._save_attendance(emp_id, name, today, "09:31:00", "Late Arrived", "IN")
-                
-                status = "Left" if current_time >= office_end else "Early Leaving"
-                msg = "Goodbye!"
-                self.buzzer.beep_on_time() if status == "Left" else self.buzzer.beep_late_or_early()
-                self._save_attendance(emp_id, name, today, current_t, status, "OUT")
+            # --- FIRST SCAN OF THE DAY (IN) ---
+            if current_time < office_start:
+                status = "On-Time"
             else:
-                # Between 12 and 1 PM (Lunch break) - Just mark Late IN
                 status = "Late Arrived"
-                msg = "Late Arrival"
-                self.buzzer.beep_late_or_early()
-                self._save_attendance(emp_id, name, today, current_t, status, "IN")
-                
+            
+            msg = "Welcome!"
+            self.buzzer.beep_on_time() if status == "On-Time" else self.buzzer.beep_late_or_early()
+            self._save_attendance(emp_id, name, today, current_t, status, "IN")
+            
             self.lcd.display(msg, name[:16])
-            time.sleep(1)
-            self.lcd.display("Data Saved", status)
+            self.last_marked = name
+            time.sleep(1.5)
+            self.lcd.display("IN Recorded", status)
         else:
-            # --- SECOND SCAN (Already has IN) ---
-            # If they scan again at any time, it is a Check-OUT
+            # --- SECOND SCAN (OUT) ---
             status = "Left" if current_time >= office_end else "Early Leaving"
             msg = "Goodbye!"
             self.buzzer.beep_on_time() if status == "Left" else self.buzzer.beep_late_or_early()
             self._save_attendance(emp_id, name, today, current_t, status, "OUT")
             
             self.lcd.display(msg, name[:16])
-            time.sleep(1)
+            self.last_marked = name
+            time.sleep(1.5)
             self.lcd.display("OUT Recorded", status)
 
         # Return to idle screen
@@ -299,8 +292,12 @@ class EmployeeAttendanceApp:
                     if self.detection_counter == 0:
                         self.lcd.display("Status: Scanning", "Please wait...")
                     self.detection_counter += 1
+                    self.face_gone_count = 0 # Face is still here
                 else:
                     self.detection_counter = 0
+                    self.face_gone_count += 1
+                    if self.face_gone_count >= 5:
+                        self.last_marked = None # Reset lock so same person can scan later
                     continue
 
                 # ── STEP 2: Require 2 consecutive detections (Faster) ─────
@@ -315,6 +312,10 @@ class EmployeeAttendanceApp:
                     continue
 
                 name = names[0]
+
+                # PREVENT REPEAT: Skip if we just processed this person and they haven't walked away
+                if name != "Unknown" and self.last_marked == name:
+                    continue
 
                 if name != "Unknown":
                     self.mark_attendance(name)
